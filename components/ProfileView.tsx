@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
-import { FiCamera, FiEdit2, FiMail, FiPhone, FiLock, FiLogOut, FiCheck, FiX, FiUser } from 'react-icons/fi'
+import { FiCamera, FiEdit2, FiMail, FiLock, FiLogOut, FiCheck, FiX, FiUser, FiCalendar } from 'react-icons/fi'
+import { supabase } from '@/lib/supabase/client'
 
 interface ProfileViewProps {
   onLogout: () => void
@@ -14,31 +15,67 @@ export function ProfileView({ onLogout }: ProfileViewProps) {
   const [username, setUsername] = useState('')
   const [bio, setBio] = useState('')
   const [avatar, setAvatar] = useState<string | null>(null)
+  const [birthDate, setBirthDate] = useState('')
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // Загружаем данные из Supabase
   useEffect(() => {
-    const loadUser = async () => {
-      const tempUserId = localStorage.getItem('temp_user_id')
-      const tempEmail = localStorage.getItem('temp_email')
-      const savedAvatar = localStorage.getItem('user_avatar')
-      const savedUsername = localStorage.getItem('user_username')
-      const savedBio = localStorage.getItem('user_bio')
+    const loadProfile = async () => {
+      const userId = localStorage.getItem('temp_user_id')
+      const email = localStorage.getItem('temp_email')
       
-      setUser({
-        id: tempUserId,
-        email: tempEmail || 'user@waxgram.com',
-        username: savedUsername || 'Пользователь',
-        bio: savedBio || 'Привет! Я использую WaxGram — безопасный мессенджер',
-        avatar: savedAvatar || null,
-        createdAt: new Date().toISOString()
-      })
-      setUsername(savedUsername || 'Пользователь')
-      setBio(savedBio || 'Привет! Я использую WaxGram — безопасный мессенджер')
-      setAvatar(savedAvatar || null)
+      if (!userId) return
+      
+      try {
+        // Загружаем из базы данных
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', userId)
+          .single()
+        
+        if (error) {
+          console.error('Load profile error:', error)
+          // Если ошибка, используем localStorage как запасной вариант
+          const savedUsername = localStorage.getItem('temp_username')
+          const savedAvatar = localStorage.getItem('user_avatar')
+          const savedBio = localStorage.getItem('user_bio')
+          
+          setUser({
+            id: userId,
+            email: email || 'user@waxgram.com',
+            username: savedUsername || 'Пользователь',
+            bio: savedBio || '',
+            avatar_url: savedAvatar || null,
+            birth_date: '',
+            created_at: new Date().toISOString()
+          })
+          setUsername(savedUsername || 'Пользователь')
+          setBio(savedBio || '')
+          setAvatar(savedAvatar || null)
+        } else if (data) {
+          setUser(data)
+          setUsername(data.username || 'Пользователь')
+          setBio(data.bio || '')
+          setAvatar(data.avatar_url)
+          setBirthDate(data.birth_date || '')
+          
+          // Обновляем localStorage
+          localStorage.setItem('temp_username', data.username)
+          if (data.avatar_url) localStorage.setItem('user_avatar', data.avatar_url)
+          if (data.bio) localStorage.setItem('user_bio', data.bio)
+        }
+      } catch (err) {
+        console.error('Load error:', err)
+      } finally {
+        setLoading(false)
+      }
     }
-    loadUser()
+    
+    loadProfile()
   }, [])
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -48,45 +85,86 @@ export function ProfileView({ onLogout }: ProfileViewProps) {
     setUploading(true)
     
     try {
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('userId', user?.id || 'unknown')
-      
-      const response = await fetch('/api/upload-avatar', {
-        method: 'POST',
-        body: formData
-      })
-      
-      const data = await response.json()
-      
-      if (data.success) {
-        setAvatar(data.avatarUrl)
-        localStorage.setItem('user_avatar', data.avatarUrl)
+      // Конвертируем в base64
+      const reader = new FileReader()
+      reader.onloadend = async () => {
+        const base64 = reader.result as string
+        setAvatar(base64)
+        
+        // Сохраняем в базу
+        if (user?.id) {
+          const { error } = await supabase
+            .from('profiles')
+            .update({ avatar_url: base64 })
+            .eq('id', user.id)
+          
+          if (error) {
+            console.error('Update avatar error:', error)
+          } else {
+            localStorage.setItem('user_avatar', base64)
+          }
+        }
+        setUploading(false)
       }
+      reader.readAsDataURL(file)
     } catch (error) {
       console.error('Upload error:', error)
-    } finally {
       setUploading(false)
     }
   }
 
   const handleSave = async () => {
+    if (!user?.id) return
+    
     setSaving(true)
-    setTimeout(() => {
-      localStorage.setItem('user_username', username)
-      localStorage.setItem('user_bio', bio)
-      setUser({ ...user, username, bio, avatar })
-      setIsEditing(false)
+    
+    try {
+      const updates: any = {
+        username: username,
+        bio: bio,
+        birth_date: birthDate || null,
+        avatar_url: avatar,
+        updated_at: new Date().toISOString()
+      }
+      
+      const { error } = await supabase
+        .from('profiles')
+        .update(updates)
+        .eq('id', user.id)
+      
+      if (error) {
+        console.error('Update error:', error)
+      } else {
+        // Обновляем localStorage
+        localStorage.setItem('temp_username', username)
+        localStorage.setItem('user_bio', bio)
+        if (avatar) localStorage.setItem('user_avatar', avatar)
+        
+        setUser({ ...user, ...updates })
+        setIsEditing(false)
+      }
+    } catch (error) {
+      console.error('Save error:', error)
+    } finally {
       setSaving(false)
-    }, 500)
+    }
   }
 
   const formatDate = (date: string) => {
+    if (!date) return 'недавно'
     return new Date(date).toLocaleDateString('ru-RU', {
       year: 'numeric',
       month: 'long',
       day: 'numeric'
     })
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="spinner"></div>
+      </div>
+    )
   }
 
   return (
@@ -112,6 +190,7 @@ export function ProfileView({ onLogout }: ProfileViewProps) {
             )}
           </div>
 
+          {/* Avatar */}
           <div className="flex justify-center">
             <div className="relative">
               <div className="w-32 h-32 rounded-full overflow-hidden bg-gradient-to-br from-[#2b6bff] to-[#0055ff] flex items-center justify-center">
@@ -148,19 +227,31 @@ export function ProfileView({ onLogout }: ProfileViewProps) {
             </div>
           </div>
 
+          {/* Profile Info */}
           <div className="glass-card p-6 space-y-4">
             {isEditing ? (
               <>
                 <div>
-                  <label className="block text-sm text-gray-400 mb-2">Имя пользователя</label>
+                  <label className="block text-sm text-gray-400 mb-2">Имя пользователя *</label>
                   <input
                     type="text"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:border-[#2b6bff] text-white"
-                    placeholder="Введите username"
                   />
-                  <p className="text-xs text-gray-500 mt-1">Это имя будут видеть другие пользователи</p>
+                  <p className="text-xs text-gray-500 mt-1">Только буквы, цифры и подчеркивания</p>
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-2">Дата рождения</label>
+                  <div className="relative">
+                    <FiCalendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
+                    <input
+                      type="date"
+                      value={birthDate}
+                      onChange={(e) => setBirthDate(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:border-[#2b6bff] text-white"
+                    />
+                  </div>
                 </div>
                 <div>
                   <label className="block text-sm text-gray-400 mb-2">О себе</label>
@@ -193,8 +284,10 @@ export function ProfileView({ onLogout }: ProfileViewProps) {
                     whileTap={{ scale: 0.98 }}
                     onClick={() => {
                       setIsEditing(false)
-                      setUsername(user?.username)
-                      setBio(user?.bio)
+                      setUsername(user?.username || 'Пользователь')
+                      setBio(user?.bio || '')
+                      setAvatar(user?.avatar_url)
+                      setBirthDate(user?.birth_date || '')
                     }}
                     className="flex-1 bg-white/10 text-white py-2 rounded-xl flex items-center justify-center gap-2"
                   >
@@ -218,6 +311,24 @@ export function ProfileView({ onLogout }: ProfileViewProps) {
                     <p className="text-white font-medium">{user?.email}</p>
                   </div>
                 </div>
+                {birthDate && (
+                  <div className="flex items-center gap-3 py-2">
+                    <FiCalendar className="text-gray-400" size={20} />
+                    <div>
+                      <p className="text-sm text-gray-400">Дата рождения</p>
+                      <p className="text-white font-medium">{formatDate(birthDate)}</p>
+                    </div>
+                  </div>
+                )}
+                {bio && (
+                  <div className="flex items-start gap-3 py-2">
+                    <FiEdit2 className="text-gray-400 mt-1" size={20} />
+                    <div>
+                      <p className="text-sm text-gray-400">О себе</p>
+                      <p className="text-white">{bio}</p>
+                    </div>
+                  </div>
+                )}
                 <div className="flex items-center gap-3 py-2">
                   <FiLock className="text-gray-400" size={20} />
                   <div>
@@ -226,7 +337,7 @@ export function ProfileView({ onLogout }: ProfileViewProps) {
                   </div>
                 </div>
                 <div className="pt-4">
-                  <p className="text-xs text-gray-500">Пользователь с {formatDate(user?.createdAt)}</p>
+                  <p className="text-xs text-gray-500">Пользователь с {formatDate(user?.created_at)}</p>
                 </div>
               </>
             )}
