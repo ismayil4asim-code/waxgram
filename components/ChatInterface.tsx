@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { FiArrowLeft, FiMoreVertical, FiPhone, FiVideo, FiUser, FiCheck, FiCheckDouble, FiInfo } from 'react-icons/fi'
+import { FiArrowLeft, FiMoreVertical, FiPhone, FiVideo, FiUser, FiCheck, FiInfo } from 'react-icons/fi'
 import { supabase } from '@/lib/supabase/client'
 import { Toast } from './Toast'
 import { MessageInput } from './MessageInput'
@@ -288,7 +288,7 @@ export function ChatInterface({ chatId, roomId: initialRoomId, onBack, isMobile 
                     <span>{formatTime(message.created_at)}</span>
                     {isOutgoing && (
                       isMessageRead(message) ? (
-                        <FiCheckDouble size={12} className="text-blue-300" />
+                        <span className="text-blue-300">✓✓</span>
                       ) : (
                         <FiCheck size={12} />
                       )
