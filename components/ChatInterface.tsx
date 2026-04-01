@@ -9,6 +9,7 @@ import { MessageInput } from './MessageInput'
 
 interface ChatInterfaceProps {
   chatId?: string
+  roomId?: string
   onBack?: () => void
   isMobile?: boolean
 }
@@ -17,17 +18,17 @@ interface Message {
   id: string
   content: string
   sender_id: string
-  time: string
-  status: string
+  created_at: string
 }
 
-export function ChatInterface({ chatId, onBack, isMobile = false }: ChatInterfaceProps) {
+export function ChatInterface({ chatId, roomId: initialRoomId, onBack, isMobile = false }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [userId, setUserId] = useState<string | null>(null)
+  const [roomId, setRoomId] = useState<string | null>(initialRoomId || null)
   const [chatName, setChatName] = useState('')
   const [chatUsername, setChatUsername] = useState('')
   const [chatAvatar, setChatAvatar] = useState<string | null>(null)
-  const [currentUser, setCurrentUser] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
   const [toast, setToast] = useState({ show: false, message: '', type: 'info' as 'success' | 'error' | 'info' })
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -45,72 +46,107 @@ export function ChatInterface({ chatId, onBack, isMobile = false }: ChatInterfac
       }
       setUserId(tempUserId)
       
-      // Загружаем текущего пользователя
-      const { data: userData } = await supabase
+      // Загружаем информацию о собеседнике
+      const { data: contactData } = await supabase
         .from('profiles')
         .select('username, avatar_url')
-        .eq('id', tempUserId)
+        .eq('id', chatId)
         .single()
       
-      if (userData) {
-        setCurrentUser(userData)
+      if (contactData) {
+        setChatName(contactData.username || 'Пользователь')
+        setChatUsername(contactData.username || 'user')
+        setChatAvatar(contactData.avatar_url)
       }
       
-      // Данные для чатов
-      const chatData: Record<string, { name: string; username: string; avatar: string | null }> = {
-        '1': { 
-          name: 'vaksek', 
-          username: 'vaksek',
-          avatar: 'https://i.ibb.co/zThS1F2P/photo-2026-03-29-10-46-46.jpg'
+      // Если нет roomId, создаем или получаем
+      if (!roomId && chatId) {
+        const response = await fetch('/api/chats', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: tempUserId, contactId: chatId })
+        })
+        
+        const data = await response.json()
+        if (data.success) {
+          setRoomId(data.roomId)
         }
       }
       
-      const currentChat = chatData[chatId || '1']
-      if (currentChat) {
-        setChatName(currentChat.name)
-        setChatUsername(currentChat.username)
-        setChatAvatar(currentChat.avatar)
-      }
-
-      // Сообщения
-      setMessages([
-        {
-          id: '1',
-          content: 'Привет! Это тестовое сообщение',
-          sender_id: 'other',
-          time: '13:45',
-          status: 'read'
-        },
-        {
-          id: '2',
-          content: 'Ну и хули, норм получилось',
-          sender_id: 'other',
-          time: '14:15',
-          status: 'read'
-        }
-      ])
-
-      showToast('Подключено к защищенному чату', 'success')
+      setLoading(false)
     }
     
     initChat()
-  }, [chatId])
+  }, [chatId, roomId])
 
-  const handleSendMessage = (text: string) => {
-    if (!text.trim()) return
+  // Загрузка сообщений
+  useEffect(() => {
+    if (!roomId) return
     
-    const newMessage: Message = {
-      id: Date.now().toString(),
-      content: text,
-      sender_id: userId || 'me',
-      time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
-      status: 'sent'
+    const loadMessages = async () => {
+      const { data, error } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('room_id', roomId)
+        .order('created_at', { ascending: true })
+      
+      if (!error && data) {
+        setMessages(data)
+      }
     }
     
-    setMessages(prev => [...prev, newMessage])
-    setTimeout(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-    }, 100)
+    loadMessages()
+    
+    // Подписка на новые сообщения
+    const subscription = supabase
+      .channel(`room:${roomId}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages',
+        filter: `room_id=eq.${roomId}`,
+      }, (payload) => {
+        setMessages(prev => [...prev, payload.new as Message])
+        setTimeout(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+        }, 100)
+      })
+      .subscribe()
+    
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [roomId])
+
+  const handleSendMessage = async (text: string) => {
+    if (!text.trim() || !roomId || !userId) return
+    
+    const { error } = await supabase
+      .from('messages')
+      .insert({
+        room_id: roomId,
+        sender_id: userId,
+        content: text,
+        message_type: 'text'
+      })
+    
+    if (error) {
+      console.error('Send error:', error)
+      showToast('Ошибка отправки сообщения', 'error')
+    }
+  }
+
+  const formatTime = (date: string) => {
+    const d = new Date(date)
+    return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="spinner"></div>
+      </div>
+    )
   }
 
   return (
@@ -193,7 +229,7 @@ export function ChatInterface({ chatId, onBack, isMobile = false }: ChatInterfac
                 <div className={`max-w-[70%] ${isOutgoing ? 'bg-gradient-to-r from-[#2b6bff] to-[#0055ff] text-white rounded-2xl rounded-tr-sm' : 'bg-white/10 text-white rounded-2xl rounded-tl-sm'} px-4 py-2`}>
                   <p className="text-sm">{message.content}</p>
                   <div className={`text-xs mt-1 flex items-center gap-1 ${isOutgoing ? 'text-blue-200' : 'text-gray-400'}`}>
-                    <span>{message.time}</span>
+                    <span>{formatTime(message.created_at)}</span>
                     {isOutgoing && <FiCheck size={12} />}
                   </div>
                 </div>
