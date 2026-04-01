@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import bcrypt from 'bcryptjs'
 
 export async function POST(request: NextRequest) {
   try {
@@ -34,7 +35,7 @@ export async function POST(request: NextRequest) {
     // Проверяем существует ли пользователь
     let { data: existingUser } = await supabaseAdmin
       .from('profiles')
-      .select('id, username, email_verified')
+      .select('id, username')
       .eq('email', email)
       .single()
     
@@ -43,23 +44,28 @@ export async function POST(request: NextRequest) {
     
     if (existingUser) {
       userId = existingUser.id
-      // Обновляем статус верификации email
+      // Обновляем статус онлайн
       await supabaseAdmin
         .from('profiles')
-        .update({ email_verified: true })
+        .update({ online: true, last_seen: new Date().toISOString() })
         .eq('id', userId)
     } else {
       isNewUser = true
+      
+      // Если нет username, возвращаем ошибку
+      if (!username) {
+        return NextResponse.json({ error: 'Требуется регистрация' }, { status: 400 })
+      }
+      
       // Создаем нового пользователя
       const { data: newUser, error: createError } = await supabaseAdmin
         .from('profiles')
         .insert({
           email: email,
-          username: username || email.split('@')[0],
+          username: username,
           bio: bio || '',
           birth_date: birthDate || null,
           avatar_url: avatarUrl || null,
-          email_verified: true,
           online: true,
           last_seen: new Date().toISOString()
         })
@@ -74,18 +80,12 @@ export async function POST(request: NextRequest) {
       userId = newUser.id
     }
     
-    // Обновляем статус онлайн
-    await supabaseAdmin
-      .from('profiles')
-      .update({ online: true, last_seen: new Date().toISOString() })
-      .eq('id', userId)
-    
     return NextResponse.json({
       success: true,
       userId: userId,
       email: email,
       isNewUser: isNewUser,
-      username: existingUser?.username || username || email.split('@')[0]
+      username: existingUser?.username || username
     })
     
   } catch (error) {
