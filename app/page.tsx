@@ -13,7 +13,7 @@ import { ChannelView } from '@/components/ChannelView'
 
 export default function Home() {
   const [currentView, setCurrentView] = useState<'chats' | 'channels' | 'profile'>('chats')
-  const [selectedChat, setSelectedChat] = useState<string | null>(null)
+  const [selectedChat, setSelectedChat] = useState<{ id: string; roomId?: string } | null>(null)
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null)
   const [isMobile, setIsMobile] = useState(false)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
@@ -43,8 +43,8 @@ export default function Home() {
     router.push('/auth')
   }
 
-  const handleSelectChat = (chatId: string) => {
-    setSelectedChat(chatId)
+  const handleSelectChat = (chatId: string, roomId?: string) => {
+    setSelectedChat({ id: chatId, roomId })
   }
 
   const handleSelectChannel = (channelId: string) => {
@@ -75,7 +75,8 @@ export default function Home() {
     return (
       <div className="h-screen">
         <ChatInterface 
-          chatId={selectedChat} 
+          chatId={selectedChat.id} 
+          roomId={selectedChat.roomId}
           onBack={handleBack}
           isMobile={isMobile}
         />
