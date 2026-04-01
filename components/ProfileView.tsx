@@ -39,7 +39,6 @@ export function ProfileView({ onLogout }: ProfileViewProps) {
           .single()
         
         if (error) {
-          // Если ошибка, используем localStorage как запасной вариант
           const savedUsername = localStorage.getItem('temp_username')
           const savedAvatar = localStorage.getItem('user_avatar')
           const savedBio = localStorage.getItem('user_bio')
@@ -65,7 +64,6 @@ export function ProfileView({ onLogout }: ProfileViewProps) {
           setAvatar(data.avatar_url)
           setBirthDate(data.birth_date || '')
           
-          // Обновляем localStorage
           localStorage.setItem('temp_username', data.username)
           if (data.avatar_url) localStorage.setItem('user_avatar', data.avatar_url)
           if (data.bio) localStorage.setItem('user_bio', data.bio)
@@ -192,8 +190,8 @@ export function ProfileView({ onLogout }: ProfileViewProps) {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#0a0a0a] via-[#0f0f1a] to-[#0a0a0a]">
-      <div className="max-w-4xl mx-auto p-6">
+    <div className="h-full overflow-y-auto bg-gradient-to-br from-[#0a0a0a] via-[#0f0f1a] to-[#0a0a0a]">
+      <div className="max-w-4xl mx-auto p-6 pb-24">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
