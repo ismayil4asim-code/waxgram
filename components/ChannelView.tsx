@@ -55,6 +55,35 @@ export function ChannelView({ channelId, onBack, isMobile = false }: ChannelView
   const [sendingComment, setSendingComment] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
+  const loadPosts = async () => {
+    try {
+      const { data: postsData, error: postsError } = await supabase
+        .from('channel_posts')
+        .select(`
+          *,
+          profiles:author_id (username, avatar_url),
+          post_likes:channel_post_likes!left (user_id)
+        `)
+        .eq('channel_id', channelId)
+        .order('created_at', { ascending: false })
+      
+      if (postsError) throw postsError
+      
+      const formattedPosts = postsData?.map(post => ({
+        ...post,
+        author_name: post.profiles?.username || 'Пользователь',
+        author_avatar: post.profiles?.avatar_url,
+        liked_by_user: post.post_likes?.some((like: any) => like.user_id === currentUserId) || false,
+        views: post.views || 0,
+        comments: post.comments || 0
+      })) || []
+      
+      setPosts(formattedPosts)
+    } catch (error) {
+      console.error('Load posts error:', error)
+    }
+  }
+
   useEffect(() => {
     const loadData = async () => {
       const userId = localStorage.getItem('temp_user_id')
@@ -75,27 +104,8 @@ export function ChannelView({ channelId, onBack, isMobile = false }: ChannelView
           is_owner: channelData.owner_id === userId
         })
         
-        // Загружаем посты с информацией о лайках
-        const { data: postsData, error: postsError } = await supabase
-          .from('channel_posts')
-          .select(`
-            *,
-            profiles:author_id (username, avatar_url),
-            post_likes:channel_post_likes!left (user_id)
-          `)
-          .eq('channel_id', channelId)
-          .order('created_at', { ascending: false })
-        
-        if (postsError) throw postsError
-        
-        const formattedPosts = postsData?.map(post => ({
-          ...post,
-          author_name: post.profiles?.username || 'Пользователь',
-          author_avatar: post.profiles?.avatar_url,
-          liked_by_user: post.post_likes?.some((like: any) => like.user_id === userId) || false
-        })) || []
-        
-        setPosts(formattedPosts)
+        // Загружаем посты
+        await loadPosts()
       } catch (error) {
         console.error('Load channel error:', error)
       } finally {
@@ -126,8 +136,8 @@ export function ChannelView({ channelId, onBack, isMobile = false }: ChannelView
           author_name: author?.username || 'Пользователь',
           author_avatar: author?.avatar_url,
           liked_by_user: false,
-          views: 0,
-          comments: 0
+          views: newPost.views || 0,
+          comments: newPost.comments || 0
         }, ...prev])
       })
       .subscribe()
@@ -140,14 +150,28 @@ export function ChannelView({ channelId, onBack, isMobile = false }: ChannelView
         schema: 'public',
         table: 'channel_post_likes'
       }, () => {
-        // Перезагружаем данные для обновления счетчиков
-        loadData()
+        // Перезагружаем посты для обновления счетчиков лайков
+        loadPosts()
+      })
+      .subscribe()
+    
+    // Подписка на обновления комментариев
+    const commentsSubscription = supabase
+      .channel('post-comments')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'channel_post_comments'
+      }, () => {
+        // Перезагружаем посты для обновления счетчиков комментариев
+        loadPosts()
       })
       .subscribe()
     
     return () => {
       postsSubscription.unsubscribe()
       likesSubscription.unsubscribe()
+      commentsSubscription.unsubscribe()
     }
   }, [channelId])
 
@@ -180,31 +204,49 @@ export function ChannelView({ channelId, onBack, isMobile = false }: ChannelView
     try {
       if (post.liked_by_user) {
         // Удаляем лайк
-        await supabase
+        const { error } = await supabase
           .from('channel_post_likes')
           .delete()
           .eq('post_id', postId)
           .eq('user_id', currentUserId)
         
-        setPosts(prev => prev.map(p => 
-          p.id === postId 
-            ? { ...p, views: p.views - 1, liked_by_user: false }
-            : p
-        ))
+        if (!error) {
+          // Обновляем счетчик лайков в таблице постов
+          await supabase
+            .from('channel_posts')
+            .update({ views: post.views - 1 })
+            .eq('id', postId)
+          
+          // Обновляем локальное состояние
+          setPosts(prev => prev.map(p => 
+            p.id === postId 
+              ? { ...p, views: p.views - 1, liked_by_user: false }
+              : p
+          ))
+        }
       } else {
         // Добавляем лайк
-        await supabase
+        const { error } = await supabase
           .from('channel_post_likes')
           .insert({
             post_id: postId,
             user_id: currentUserId
           })
         
-        setPosts(prev => prev.map(p => 
-          p.id === postId 
-            ? { ...p, views: p.views + 1, liked_by_user: true }
-            : p
-        ))
+        if (!error) {
+          // Обновляем счетчик лайков в таблице постов
+          await supabase
+            .from('channel_posts')
+            .update({ views: post.views + 1 })
+            .eq('id', postId)
+          
+          // Обновляем локальное состояние
+          setPosts(prev => prev.map(p => 
+            p.id === postId 
+              ? { ...p, views: p.views + 1, liked_by_user: true }
+              : p
+          ))
+        }
       }
     } catch (error) {
       console.error('Like error:', error)
@@ -215,6 +257,9 @@ export function ChannelView({ channelId, onBack, isMobile = false }: ChannelView
     if (!newComment.trim() || !currentUserId) return
     
     setSendingComment(true)
+    
+    const post = posts.find(p => p.id === postId)
+    if (!post) return
     
     try {
       const { data, error } = await supabase
@@ -228,6 +273,12 @@ export function ChannelView({ channelId, onBack, isMobile = false }: ChannelView
         .single()
       
       if (error) throw error
+      
+      // Обновляем счетчик комментариев в таблице постов
+      await supabase
+        .from('channel_posts')
+        .update({ comments: post.comments + 1 })
+        .eq('id', postId)
       
       const { data: author } = await supabase
         .from('profiles')
@@ -244,7 +295,7 @@ export function ChannelView({ channelId, onBack, isMobile = false }: ChannelView
       setComments(prev => [...prev, newCommentObj])
       setNewComment('')
       
-      // Обновляем счетчик комментариев в посте
+      // Обновляем локальное состояние поста
       setPosts(prev => prev.map(p => 
         p.id === postId 
           ? { ...p, comments: p.comments + 1 }
@@ -287,7 +338,9 @@ export function ChannelView({ channelId, onBack, isMobile = false }: ChannelView
         ...data,
         author_name: author?.username || 'Вы',
         author_avatar: author?.avatar_url,
-        liked_by_user: false
+        liked_by_user: false,
+        views: 0,
+        comments: 0
       }, ...prev])
       
       setNewPost('')
@@ -433,6 +486,9 @@ export function ChannelView({ channelId, onBack, isMobile = false }: ChannelView
                         className="mt-4 pt-3 border-t border-white/10"
                       >
                         <div className="max-h-64 overflow-y-auto space-y-2 mb-3">
+                          {comments.length === 0 && (
+                            <p className="text-xs text-gray-500 text-center py-2">Нет комментариев</p>
+                          )}
                           {comments.map((comment) => (
                             <div key={comment.id} className="flex gap-2">
                               <div className="w-6 h-6 rounded-full overflow-hidden bg-gradient-to-br from-[#2b6bff] to-[#0055ff] flex items-center justify-center flex-shrink-0">
