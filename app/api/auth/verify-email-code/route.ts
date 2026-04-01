@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import bcrypt from 'bcryptjs'
 
 export async function POST(request: NextRequest) {
   try {
@@ -39,53 +38,54 @@ export async function POST(request: NextRequest) {
       .eq('email', email)
       .single()
     
-    let userId: string
-    let isNewUser = false
-    
+    // Если пользователь существует - вход
     if (existingUser) {
-      userId = existingUser.id
       // Обновляем статус онлайн
       await supabaseAdmin
         .from('profiles')
         .update({ online: true, last_seen: new Date().toISOString() })
-        .eq('id', userId)
-    } else {
-      isNewUser = true
+        .eq('id', existingUser.id)
       
-      // Если нет username, возвращаем ошибку
-      if (!username) {
-        return NextResponse.json({ error: 'Требуется регистрация' }, { status: 400 })
-      }
-      
-      // Создаем нового пользователя
-      const { data: newUser, error: createError } = await supabaseAdmin
-        .from('profiles')
-        .insert({
-          email: email,
-          username: username,
-          bio: bio || '',
-          birth_date: birthDate || null,
-          avatar_url: avatarUrl || null,
-          online: true,
-          last_seen: new Date().toISOString()
-        })
-        .select()
-        .single()
-      
-      if (createError) {
-        console.error('Create user error:', createError)
-        return NextResponse.json({ error: 'Ошибка создания пользователя' }, { status: 500 })
-      }
-      
-      userId = newUser.id
+      return NextResponse.json({
+        success: true,
+        userId: existingUser.id,
+        email: email,
+        isNewUser: false,
+        username: existingUser.username
+      })
+    }
+    
+    // Если пользователь не существует и нет данных для регистрации
+    if (!username) {
+      return NextResponse.json({ error: 'Требуется регистрация' }, { status: 400 })
+    }
+    
+    // Создаем нового пользователя
+    const { data: newUser, error: createError } = await supabaseAdmin
+      .from('profiles')
+      .insert({
+        email: email,
+        username: username,
+        bio: bio || '',
+        birth_date: birthDate || null,
+        avatar_url: avatarUrl || null,
+        online: true,
+        last_seen: new Date().toISOString()
+      })
+      .select()
+      .single()
+    
+    if (createError) {
+      console.error('Create user error:', createError)
+      return NextResponse.json({ error: 'Ошибка создания пользователя: ' + createError.message }, { status: 500 })
     }
     
     return NextResponse.json({
       success: true,
-      userId: userId,
+      userId: newUser.id,
       email: email,
-      isNewUser: isNewUser,
-      username: existingUser?.username || username
+      isNewUser: true,
+      username: username
     })
     
   } catch (error) {
