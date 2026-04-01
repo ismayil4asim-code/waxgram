@@ -2,13 +2,22 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { FiArrowLeft, FiMoreVertical, FiUsers, FiShare2, FiBell, FiUser, FiLoader, FiSend, FiHeart, FiMessageCircle } from 'react-icons/fi'
+import { FiArrowLeft, FiMoreVertical, FiUsers, FiShare2, FiBell, FiUser, FiLoader, FiSend, FiHeart, FiMessageCircle, FiX } from 'react-icons/fi'
 import { supabase } from '@/lib/supabase/client'
 
 interface ChannelViewProps {
   channelId: string
   onBack: () => void
   isMobile?: boolean
+}
+
+interface Comment {
+  id: string
+  content: string
+  author_id: string
+  author_name: string
+  author_avatar?: string
+  created_at: string
 }
 
 interface Post {
@@ -20,6 +29,7 @@ interface Post {
   views: number
   comments: number
   created_at: string
+  liked_by_user?: boolean
 }
 
 interface Channel {
@@ -39,6 +49,10 @@ export function ChannelView({ channelId, onBack, isMobile = false }: ChannelView
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  const [showComments, setShowComments] = useState<string | null>(null)
+  const [comments, setComments] = useState<Comment[]>([])
+  const [newComment, setNewComment] = useState('')
+  const [sendingComment, setSendingComment] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -61,12 +75,13 @@ export function ChannelView({ channelId, onBack, isMobile = false }: ChannelView
           is_owner: channelData.owner_id === userId
         })
         
-        // Загружаем посты
+        // Загружаем посты с информацией о лайках
         const { data: postsData, error: postsError } = await supabase
           .from('channel_posts')
           .select(`
             *,
-            profiles:author_id (username, avatar_url)
+            profiles:author_id (username, avatar_url),
+            post_likes:channel_post_likes!left (user_id)
           `)
           .eq('channel_id', channelId)
           .order('created_at', { ascending: false })
@@ -76,7 +91,8 @@ export function ChannelView({ channelId, onBack, isMobile = false }: ChannelView
         const formattedPosts = postsData?.map(post => ({
           ...post,
           author_name: post.profiles?.username || 'Пользователь',
-          author_avatar: post.profiles?.avatar_url
+          author_avatar: post.profiles?.avatar_url,
+          liked_by_user: post.post_likes?.some((like: any) => like.user_id === userId) || false
         })) || []
         
         setPosts(formattedPosts)
@@ -90,8 +106,8 @@ export function ChannelView({ channelId, onBack, isMobile = false }: ChannelView
     loadData()
     
     // Подписка на новые посты
-    const subscription = supabase
-      .channel(`channel:${channelId}`)
+    const postsSubscription = supabase
+      .channel(`channel-posts:${channelId}`)
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
@@ -108,15 +124,138 @@ export function ChannelView({ channelId, onBack, isMobile = false }: ChannelView
         setPosts(prev => [{
           ...newPost,
           author_name: author?.username || 'Пользователь',
-          author_avatar: author?.avatar_url
+          author_avatar: author?.avatar_url,
+          liked_by_user: false,
+          views: 0,
+          comments: 0
         }, ...prev])
       })
       .subscribe()
     
+    // Подписка на обновления лайков
+    const likesSubscription = supabase
+      .channel('post-likes')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'channel_post_likes'
+      }, () => {
+        // Перезагружаем данные для обновления счетчиков
+        loadData()
+      })
+      .subscribe()
+    
     return () => {
-      subscription.unsubscribe()
+      postsSubscription.unsubscribe()
+      likesSubscription.unsubscribe()
     }
   }, [channelId])
+
+  const loadComments = async (postId: string) => {
+    const { data, error } = await supabase
+      .from('channel_post_comments')
+      .select(`
+        *,
+        profiles:author_id (username, avatar_url)
+      `)
+      .eq('post_id', postId)
+      .order('created_at', { ascending: true })
+    
+    if (!error && data) {
+      const formattedComments = data.map(comment => ({
+        ...comment,
+        author_name: comment.profiles?.username || 'Пользователь',
+        author_avatar: comment.profiles?.avatar_url
+      }))
+      setComments(formattedComments)
+    }
+  }
+
+  const handleLike = async (postId: string) => {
+    if (!currentUserId) return
+    
+    const post = posts.find(p => p.id === postId)
+    if (!post) return
+    
+    try {
+      if (post.liked_by_user) {
+        // Удаляем лайк
+        await supabase
+          .from('channel_post_likes')
+          .delete()
+          .eq('post_id', postId)
+          .eq('user_id', currentUserId)
+        
+        setPosts(prev => prev.map(p => 
+          p.id === postId 
+            ? { ...p, views: p.views - 1, liked_by_user: false }
+            : p
+        ))
+      } else {
+        // Добавляем лайк
+        await supabase
+          .from('channel_post_likes')
+          .insert({
+            post_id: postId,
+            user_id: currentUserId
+          })
+        
+        setPosts(prev => prev.map(p => 
+          p.id === postId 
+            ? { ...p, views: p.views + 1, liked_by_user: true }
+            : p
+        ))
+      }
+    } catch (error) {
+      console.error('Like error:', error)
+    }
+  }
+
+  const handleAddComment = async (postId: string) => {
+    if (!newComment.trim() || !currentUserId) return
+    
+    setSendingComment(true)
+    
+    try {
+      const { data, error } = await supabase
+        .from('channel_post_comments')
+        .insert({
+          post_id: postId,
+          author_id: currentUserId,
+          content: newComment
+        })
+        .select()
+        .single()
+      
+      if (error) throw error
+      
+      const { data: author } = await supabase
+        .from('profiles')
+        .select('username, avatar_url')
+        .eq('id', currentUserId)
+        .single()
+      
+      const newCommentObj = {
+        ...data,
+        author_name: author?.username || 'Вы',
+        author_avatar: author?.avatar_url
+      }
+      
+      setComments(prev => [...prev, newCommentObj])
+      setNewComment('')
+      
+      // Обновляем счетчик комментариев в посте
+      setPosts(prev => prev.map(p => 
+        p.id === postId 
+          ? { ...p, comments: p.comments + 1 }
+          : p
+      ))
+    } catch (error) {
+      console.error('Comment error:', error)
+    } finally {
+      setSendingComment(false)
+    }
+  }
 
   const handleSendPost = async () => {
     if (!newPost.trim() || !channel || !currentUserId) return
@@ -147,7 +286,8 @@ export function ChannelView({ channelId, onBack, isMobile = false }: ChannelView
       setPosts(prev => [{
         ...data,
         author_name: author?.username || 'Вы',
-        author_avatar: author?.avatar_url
+        author_avatar: author?.avatar_url,
+        liked_by_user: false
       }, ...prev])
       
       setNewPost('')
@@ -256,13 +396,81 @@ export function ChannelView({ channelId, onBack, isMobile = false }: ChannelView
                   </div>
                   <p className="text-gray-200 whitespace-pre-wrap">{post.content}</p>
                   <div className="flex items-center gap-4 mt-3">
-                    <button className="flex items-center gap-1 text-gray-400 hover:text-[#2b6bff] transition-colors text-xs">
-                      <FiHeart size={14} /> {post.views}
+                    <button
+                      onClick={() => handleLike(post.id)}
+                      className={`flex items-center gap-1 transition-colors text-xs ${
+                        post.liked_by_user 
+                          ? 'text-red-500' 
+                          : 'text-gray-400 hover:text-red-500'
+                      }`}
+                    >
+                      <FiHeart size={14} className={post.liked_by_user ? 'fill-current' : ''} />
+                      {post.views}
                     </button>
-                    <button className="flex items-center gap-1 text-gray-400 hover:text-[#2b6bff] transition-colors text-xs">
-                      <FiMessageCircle size={14} /> {post.comments}
+                    <button
+                      onClick={() => {
+                        if (showComments === post.id) {
+                          setShowComments(null)
+                        } else {
+                          setShowComments(post.id)
+                          loadComments(post.id)
+                        }
+                      }}
+                      className="flex items-center gap-1 text-gray-400 hover:text-[#2b6bff] transition-colors text-xs"
+                    >
+                      <FiMessageCircle size={14} />
+                      {post.comments}
                     </button>
                   </div>
+                  
+                  {/* Comments section */}
+                  <AnimatePresence>
+                    {showComments === post.id && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="mt-4 pt-3 border-t border-white/10"
+                      >
+                        <div className="max-h-64 overflow-y-auto space-y-2 mb-3">
+                          {comments.map((comment) => (
+                            <div key={comment.id} className="flex gap-2">
+                              <div className="w-6 h-6 rounded-full overflow-hidden bg-gradient-to-br from-[#2b6bff] to-[#0055ff] flex items-center justify-center flex-shrink-0">
+                                {comment.author_avatar ? (
+                                  <img src={comment.author_avatar} alt="" className="w-full h-full object-cover" />
+                                ) : (
+                                  <FiUser className="text-white" size={12} />
+                                )}
+                              </div>
+                              <div className="flex-1">
+                                <span className="text-xs font-medium text-white">{comment.author_name}</span>
+                                <p className="text-xs text-gray-400 mt-0.5">{comment.content}</p>
+                                <span className="text-[10px] text-gray-500 mt-0.5 block">{formatTime(comment.created_at)}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={newComment}
+                            onChange={(e) => setNewComment(e.target.value)}
+                            placeholder="Написать комментарий..."
+                            className="flex-1 px-3 py-1.5 text-sm bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:border-[#2b6bff] text-white placeholder-gray-500"
+                            onKeyDown={(e) => e.key === 'Enter' && handleAddComment(post.id)}
+                          />
+                          <button
+                            onClick={() => handleAddComment(post.id)}
+                            disabled={sendingComment || !newComment.trim()}
+                            className="px-3 py-1.5 bg-gradient-to-r from-[#2b6bff] to-[#0055ff] rounded-xl hover:opacity-90 disabled:opacity-50 transition-all text-sm"
+                          >
+                            {sendingComment ? <FiLoader className="animate-spin" size={14} /> : 'Ответить'}
+                          </button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
               </div>
             </motion.div>
