@@ -26,7 +26,10 @@ export function ProfileView({ onLogout }: ProfileViewProps) {
       const userId = localStorage.getItem('temp_user_id')
       const email = localStorage.getItem('temp_email')
       
-      if (!userId) return
+      if (!userId) {
+        setLoading(false)
+        return
+      }
       
       try {
         const { data, error } = await supabase
@@ -36,6 +39,7 @@ export function ProfileView({ onLogout }: ProfileViewProps) {
           .single()
         
         if (error) {
+          // Если ошибка, используем localStorage как запасной вариант
           const savedUsername = localStorage.getItem('temp_username')
           const savedAvatar = localStorage.getItem('user_avatar')
           const savedBio = localStorage.getItem('user_bio')
@@ -61,6 +65,7 @@ export function ProfileView({ onLogout }: ProfileViewProps) {
           setAvatar(data.avatar_url)
           setBirthDate(data.birth_date || '')
           
+          // Обновляем localStorage
           localStorage.setItem('temp_username', data.username)
           if (data.avatar_url) localStorage.setItem('user_avatar', data.avatar_url)
           if (data.bio) localStorage.setItem('user_bio', data.bio)
@@ -209,6 +214,7 @@ export function ProfileView({ onLogout }: ProfileViewProps) {
             )}
           </div>
 
+          {/* Avatar */}
           <div className="flex justify-center">
             <div className="relative">
               <div className="w-32 h-32 rounded-full overflow-hidden bg-gradient-to-br from-[#2b6bff] to-[#0055ff] flex items-center justify-center">
@@ -245,6 +251,7 @@ export function ProfileView({ onLogout }: ProfileViewProps) {
             </div>
           </div>
 
+          {/* Profile Info */}
           <div className="glass-card p-6 space-y-4">
             {isEditing ? (
               <>
