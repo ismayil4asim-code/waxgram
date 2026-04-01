@@ -63,32 +63,51 @@ export function CreateChannelModal({ isOpen, onClose, onCreate }: CreateChannelM
     setError('')
     
     try {
+      const currentUserId = localStorage.getItem('temp_user_id')
+      
+      if (!currentUserId) {
+        throw new Error('Пользователь не авторизован')
+      }
+      
       let avatarUrl = null
       
+      // Загружаем аватар если есть
       if (avatarFile) {
-        avatarUrl = avatar
+        const fileName = `channel_${Date.now()}_${avatarFile.name}`
+        const { data, error: uploadError } = await supabase.storage
+          .from('channel-avatars')
+          .upload(fileName, avatarFile)
+        
+        if (!uploadError && data) {
+          const { data: { publicUrl } } = supabase.storage
+            .from('channel-avatars')
+            .getPublicUrl(data.path)
+          avatarUrl = publicUrl
+        }
       }
       
-      const currentUserId = localStorage.getItem('temp_user_id')
-      const currentUsername = localStorage.getItem('temp_username')
+      // Создаем канал в базе данных
+      const { data: newChannel, error: createError } = await supabase
+        .from('channels')
+        .insert({
+          name: name.trim(),
+          description: description.trim() || null,
+          avatar_url: avatarUrl,
+          owner_id: currentUserId,
+          subscribers_count: 1
+        })
+        .select()
+        .single()
       
-      const newChannel = {
-        id: Date.now().toString(),
-        name: name.trim(),
-        description: description.trim() || 'Нет описания',
-        subscribers: 1,
-        avatar: avatarUrl,
-        isOwner: true,
-        owner_id: currentUserId,
-        owner_name: currentUsername,
-        created_at: new Date().toISOString()
-      }
+      if (createError) throw createError
       
-      // Сохраняем в localStorage
-      const savedChannels = localStorage.getItem('channels')
-      const channels = savedChannels ? JSON.parse(savedChannels) : []
-      channels.push(newChannel)
-      localStorage.setItem('channels', JSON.stringify(channels))
+      // Добавляем создателя как подписчика
+      await supabase
+        .from('channel_subscribers')
+        .insert({
+          channel_id: newChannel.id,
+          user_id: currentUserId
+        })
       
       onCreate(newChannel)
       onClose()
@@ -97,6 +116,7 @@ export function CreateChannelModal({ isOpen, onClose, onCreate }: CreateChannelM
       setAvatar(null)
       setAvatarFile(null)
     } catch (err: any) {
+      console.error('Create channel error:', err)
       setError(err.message || 'Ошибка создания канала')
     } finally {
       setLoading(false)
