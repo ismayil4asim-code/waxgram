@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { FiArrowLeft, FiMoreVertical, FiPhone, FiVideo, FiUser, FiCheck } from 'react-icons/fi'
+import { FiArrowLeft, FiMoreVertical, FiPhone, FiVideo, FiUser, FiCheck, FiCheckDouble, FiInfo } from 'react-icons/fi'
 import { supabase } from '@/lib/supabase/client'
 import { Toast } from './Toast'
 import { MessageInput } from './MessageInput'
+import { ProfileModal } from './ProfileModal'
 
 interface ChatInterfaceProps {
   chatId?: string
@@ -19,16 +20,27 @@ interface Message {
   content: string
   sender_id: string
   created_at: string
+  read_by?: string[]
+}
+
+interface Profile {
+  id: string
+  username: string
+  avatar_url: string | null
+  bio: string
+  verified: boolean
+  verified_type: string | null
+  online: boolean
+  last_seen: string
 }
 
 export function ChatInterface({ chatId, roomId: initialRoomId, onBack, isMobile = false }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [userId, setUserId] = useState<string | null>(null)
   const [roomId, setRoomId] = useState<string | null>(initialRoomId || null)
-  const [chatName, setChatName] = useState('')
-  const [chatUsername, setChatUsername] = useState('')
-  const [chatAvatar, setChatAvatar] = useState<string | null>(null)
+  const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
+  const [showProfileModal, setShowProfileModal] = useState(false)
   const [toast, setToast] = useState({ show: false, message: '', type: 'info' as 'success' | 'error' | 'info' })
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -46,17 +58,15 @@ export function ChatInterface({ chatId, roomId: initialRoomId, onBack, isMobile 
       }
       setUserId(tempUserId)
       
-      // Загружаем информацию о собеседнике
-      const { data: contactData } = await supabase
+      // Загружаем профиль собеседника
+      const { data: profileData } = await supabase
         .from('profiles')
-        .select('username, avatar_url')
+        .select('*')
         .eq('id', chatId)
         .single()
       
-      if (contactData) {
-        setChatName(contactData.username || 'Пользователь')
-        setChatUsername(contactData.username || 'user')
-        setChatAvatar(contactData.avatar_url)
+      if (profileData) {
+        setProfile(profileData)
       }
       
       // Если нет roomId, создаем или получаем
@@ -79,19 +89,40 @@ export function ChatInterface({ chatId, roomId: initialRoomId, onBack, isMobile 
     initChat()
   }, [chatId, roomId])
 
-  // Загрузка сообщений
+  // Загрузка сообщений с отметками о прочтении
   useEffect(() => {
     if (!roomId) return
     
     const loadMessages = async () => {
       const { data, error } = await supabase
         .from('messages')
-        .select('*')
+        .select(`
+          *,
+          message_reads (user_id)
+        `)
         .eq('room_id', roomId)
         .order('created_at', { ascending: true })
       
       if (!error && data) {
-        setMessages(data)
+        const formattedMessages = data.map(msg => ({
+          ...msg,
+          read_by: msg.message_reads?.map((r: any) => r.user_id) || []
+        }))
+        setMessages(formattedMessages)
+        
+        // Отмечаем как прочитанные сообщения от собеседника
+        const unreadMessages = formattedMessages.filter(
+          msg => msg.sender_id === chatId && !msg.read_by?.includes(userId)
+        )
+        
+        for (const msg of unreadMessages) {
+          await supabase
+            .from('message_reads')
+            .insert({
+              message_id: msg.id,
+              user_id: userId
+            })
+        }
       }
     }
     
@@ -111,12 +142,20 @@ export function ChatInterface({ chatId, roomId: initialRoomId, onBack, isMobile 
           messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
         }, 100)
       })
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'message_reads',
+      }, () => {
+        // Обновляем статусы прочтения
+        loadMessages()
+      })
       .subscribe()
     
     return () => {
       subscription.unsubscribe()
     }
-  }, [roomId])
+  }, [roomId, userId, chatId])
 
   const handleSendMessage = async (text: string) => {
     if (!text.trim() || !roomId || !userId) return
@@ -141,6 +180,11 @@ export function ChatInterface({ chatId, roomId: initialRoomId, onBack, isMobile 
     return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
   }
 
+  const isMessageRead = (message: Message) => {
+    if (message.sender_id !== userId) return false
+    return message.read_by?.length > 0
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -152,37 +196,49 @@ export function ChatInterface({ chatId, roomId: initialRoomId, onBack, isMobile 
   return (
     <div className="flex flex-col h-full bg-gradient-to-br from-[#0a0a0a] via-[#0f0f1a] to-[#0a0a0a]">
       {/* Header */}
-      <div className="glass px-4 py-3 flex items-center justify-between">
+      <div className="glass px-4 py-3 flex items-center justify-between safe-top">
         <div className="flex items-center gap-3">
           {onBack && (
             <button
               onClick={onBack}
-              className="p-2 hover:bg-white/10 rounded-full transition-colors"
+              className="p-2 hover:bg-white/10 rounded-full transition-colors active:scale-95"
             >
               <FiArrowLeft className="text-gray-400" size={20} />
             </button>
           )}
           
-          <div className="relative">
-            <div className="w-10 h-10 rounded-full overflow-hidden bg-gradient-to-br from-[#2b6bff] to-[#0055ff] flex items-center justify-center">
-              {chatAvatar ? (
-                <img src={chatAvatar} alt={chatName} className="w-full h-full object-cover" />
-              ) : (
-                <FiUser className="text-white" size={20} />
+          <button
+            onClick={() => setShowProfileModal(true)}
+            className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+          >
+            <div className="relative">
+              <div className="w-10 h-10 rounded-full overflow-hidden bg-gradient-to-br from-[#2b6bff] to-[#0055ff]">
+                {profile?.avatar_url ? (
+                  <img src={profile.avatar_url} alt={profile.username} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <FiUser className="text-white" size={20} />
+                  </div>
+                )}
+              </div>
+              {profile?.online && (
+                <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-black"></div>
               )}
             </div>
-            <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-black"></div>
-          </div>
-          
-          <div>
-            <h1 className="font-semibold text-white">{chatName}</h1>
-            <div className="flex items-center gap-1">
-              <p className="text-xs text-gray-400">@{chatUsername}</p>
-              <span className="text-xs text-gray-500">•</span>
-              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-              <p className="text-xs text-gray-400">в сети</p>
+            <div className="text-left">
+              <div className="flex items-center gap-1">
+                <h1 className="font-semibold text-white">{profile?.username || 'Пользователь'}</h1>
+                {profile?.verified && (
+                  <span className={`text-xs ${profile.verified_type === 'developer' ? 'text-purple-400' : 'text-[#2b6bff]'}`}>
+                    {profile.verified_type === 'developer' ? '⚡' : '✓'}
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-gray-400">
+                {profile?.online ? 'в сети' : profile?.last_seen ? `был(а) ${new Date(profile.last_seen).toLocaleTimeString()}` : 'не в сети'}
+              </p>
             </div>
-          </div>
+          </button>
         </div>
         
         <div className="flex items-center gap-2">
@@ -199,7 +255,7 @@ export function ChatInterface({ chatId, roomId: initialRoomId, onBack, isMobile 
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-6">
+      <div className="flex-1 overflow-y-auto px-4 py-4">
         <div className="max-w-4xl mx-auto">
           {messages.map((message, index) => {
             const isOutgoing = message.sender_id === userId
@@ -209,17 +265,17 @@ export function ChatInterface({ chatId, roomId: initialRoomId, onBack, isMobile 
                 key={message.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.05 }}
+                transition={{ delay: Math.min(index * 0.03, 0.5) }}
                 className={`flex mb-3 ${isOutgoing ? 'justify-end' : 'justify-start'}`}
               >
                 {!isOutgoing && (
                   <div className="w-8 h-8 rounded-full overflow-hidden bg-gradient-to-br from-[#2b6bff] to-[#0055ff] mr-2 flex-shrink-0">
-                    {chatAvatar ? (
-                      <img src={chatAvatar} alt="" className="w-full h-full object-cover" />
+                    {profile?.avatar_url ? (
+                      <img src={profile.avatar_url} alt="" className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
                         <span className="text-white text-xs font-bold">
-                          {chatName?.[0]?.toUpperCase()}
+                          {profile?.username?.[0]?.toUpperCase() || 'U'}
                         </span>
                       </div>
                     )}
@@ -230,7 +286,13 @@ export function ChatInterface({ chatId, roomId: initialRoomId, onBack, isMobile 
                   <p className="text-sm">{message.content}</p>
                   <div className={`text-xs mt-1 flex items-center gap-1 ${isOutgoing ? 'text-blue-200' : 'text-gray-400'}`}>
                     <span>{formatTime(message.created_at)}</span>
-                    {isOutgoing && <FiCheck size={12} />}
+                    {isOutgoing && (
+                      isMessageRead(message) ? (
+                        <FiCheckDouble size={12} className="text-blue-300" />
+                      ) : (
+                        <FiCheck size={12} />
+                      )
+                    )}
                   </div>
                 </div>
               </motion.div>
@@ -241,9 +303,16 @@ export function ChatInterface({ chatId, roomId: initialRoomId, onBack, isMobile 
       </div>
 
       {/* Input */}
-      <div className="glass border-t border-white/10 p-4">
+      <div className="glass border-t border-white/10 p-3 safe-bottom">
         <MessageInput onSendMessage={handleSendMessage} />
       </div>
+      
+      {/* Profile Modal */}
+      <ProfileModal
+        isOpen={showProfileModal}
+        onClose={() => setShowProfileModal(false)}
+        userId={chatId}
+      />
       
       <Toast
         message={toast.message}
