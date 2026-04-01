@@ -37,7 +37,6 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
     }
     
     try {
-      // Загружаем текущего пользователя
       const { data: userData } = await supabase
         .from('profiles')
         .select('username, avatar_url, verified, verified_type')
@@ -48,7 +47,6 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
         setCurrentUser(userData)
       }
       
-      // Загружаем комнаты пользователя
       const { data: rooms } = await supabase
         .from('room_members')
         .select('room_id')
@@ -62,7 +60,6 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
       
       const roomIds = rooms.map(r => r.room_id)
       
-      // Загружаем последние сообщения
       const { data: lastMessages } = await supabase
         .from('messages')
         .select(`
@@ -75,7 +72,6 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
         .in('room_id', roomIds)
         .order('created_at', { ascending: false })
       
-      // Группируем последние сообщения по комнатам
       const latestMessagesByRoom: Record<string, any> = {}
       lastMessages?.forEach(msg => {
         if (!latestMessagesByRoom[msg.room_id]) {
@@ -88,7 +84,6 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
         }
       })
       
-      // Загружаем участников комнат
       const { data: members } = await supabase
         .from('room_members')
         .select(`
@@ -114,7 +109,6 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
           const lastMsg = latestMessagesByRoom[room.room_id]
           
           if (profile) {
-            // Проверяем, прочитано ли сообщение
             let unread = 0
             if (lastMsg && lastMsg.sender_id !== tempUserId) {
               const isRead = lastMsg.read_by?.includes(tempUserId)
@@ -138,7 +132,6 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
         }
       }
       
-      // Сортируем чаты: сначала с непрочитанными, затем по времени последнего сообщения
       chatList.sort((a, b) => {
         if (a.unread > 0 && b.unread === 0) return -1
         if (a.unread === 0 && b.unread > 0) return 1
@@ -214,23 +207,33 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
     
     if (currentUser.verified_type === 'developer') {
       return (
-        <div className="relative">
-          <img src="/image-developer-192.png" alt="Developer" className="w-5 h-5" />
-          <span className="absolute -top-1 -right-1 text-[10px]">⚡</span>
-        </div>
+        <img 
+          src="/image-developer-192.png" 
+          alt="Developer" 
+          className="w-5 h-5 ml-1"
+          title="Разработчик WaxGram"
+        />
       )
     }
     
     if (currentUser.verified_type === 'moderator') {
       return (
-        <div className="relative">
-          <img src="/image-support-192.png" alt="Moderator" className="w-5 h-5" />
-        </div>
+        <img 
+          src="/image-support-192.png" 
+          alt="Moderator" 
+          className="w-5 h-5 ml-1"
+          title="Модератор WaxGram"
+        />
       )
     }
     
     return (
-      <img src="/image-192.png" alt="Verified" className="w-5 h-5" />
+      <img 
+        src="/image-192.png" 
+        alt="Verified" 
+        className="w-5 h-5 ml-1"
+        title="Подтвержденный пользователь"
+      />
     )
   }
 
@@ -260,7 +263,7 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
                 <FiUser className="text-white" size={18} />
               </div>
             )}
-            <div className="flex items-center gap-1">
+            <div className="flex items-center">
               <h1 className="text-xl font-bold bg-gradient-to-r from-[#2b6bff] to-[#00c6ff] bg-clip-text text-transparent">
                 WaxGram
               </h1>
