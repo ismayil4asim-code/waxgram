@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { FiSearch, FiUser } from 'react-icons/fi'
+import { FiSearch, FiUser, FiLoader } from 'react-icons/fi'
 import { SearchUser } from './SearchUser'
 import { supabase } from '@/lib/supabase/client'
 
@@ -27,15 +27,18 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [currentUser, setCurrentUser] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [isSearching, setIsSearching] = useState(false)
 
-  useEffect(() => {
-    const loadChats = async () => {
-      const tempUserId = localStorage.getItem('temp_user_id')
-      if (!tempUserId) {
-        setLoading(false)
-        return
-      }
-      
+  const loadChats = async () => {
+    const tempUserId = localStorage.getItem('temp_user_id')
+    if (!tempUserId) {
+      setLoading(false)
+      return
+    }
+    
+    setIsSearching(true)
+    
+    try {
       // Загружаем текущего пользователя
       const { data: userData } = await supabase
         .from('profiles')
@@ -48,13 +51,15 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
       }
       
       // Загружаем комнаты пользователя
-      const { data: rooms, error: roomsError } = await supabase
+      const { data: rooms } = await supabase
         .from('room_members')
         .select('room_id')
         .eq('user_id', tempUserId)
       
-      if (roomsError || !rooms || rooms.length === 0) {
+      if (!rooms || rooms.length === 0) {
+        setChats([])
         setLoading(false)
+        setIsSearching(false)
         return
       }
       
@@ -67,7 +72,7 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
         .in('room_id', roomIds)
         .order('created_at', { ascending: false })
       
-      // Загружаем участников комнат с их профилями
+      // Загружаем участников комнат
       const { data: members } = await supabase
         .from('room_members')
         .select(`
@@ -88,35 +93,41 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
         const otherUser = roomMembers.find(m => m.user_id !== tempUserId)
         
         if (otherUser && otherUser.profiles) {
-          // profiles может быть массивом или объектом
           const profile = Array.isArray(otherUser.profiles) ? otherUser.profiles[0] : otherUser.profiles
           const lastMsg = lastMessages?.find(m => m.room_id === room.room_id)
           
-          chatList.push({
-            id: otherUser.user_id,
-            room_id: room.room_id,
-            name: profile?.username || 'Пользователь',
-            username: profile?.username || 'user',
-            lastMessage: lastMsg?.content || 'Нет сообщений',
-            time: lastMsg?.created_at ? new Date(lastMsg.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '',
-            unread: 0,
-            avatar: profile?.avatar_url || null,
-            online: false
-          })
+          if (profile) {
+            chatList.push({
+              id: otherUser.user_id,
+              room_id: room.room_id,
+              name: profile.username || 'Пользователь',
+              username: profile.username || 'user',
+              lastMessage: lastMsg?.content || 'Нет сообщений',
+              time: lastMsg?.created_at ? new Date(lastMsg.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '',
+              unread: 0,
+              avatar: profile.avatar_url || null,
+              online: false
+            })
+          }
         }
       }
       
       setChats(chatList)
+    } catch (error) {
+      console.error('Load chats error:', error)
+    } finally {
       setLoading(false)
+      setIsSearching(false)
     }
-    
+  }
+
+  useEffect(() => {
     loadChats()
     
     // Подписка на новые сообщения
     const subscription = supabase
       .channel('messages')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, () => {
-        // Обновляем список чатов
         loadChats()
       })
       .subscribe()
@@ -128,33 +139,25 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
 
   const handleAddContact = async (newUser: any) => {
     const tempUserId = localStorage.getItem('temp_user_id')
-    
     if (!tempUserId) return
     
-    // Создаем комнату для чата
-    const response = await fetch('/api/chats', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: tempUserId, contactId: newUser.id })
-    })
-    
-    const data = await response.json()
-    
-    if (data.success) {
-      // Добавляем в локальный список
-      const newChat: Chat = {
-        id: newUser.id,
-        room_id: data.roomId,
-        name: newUser.username,
-        username: newUser.username,
-        lastMessage: 'Новый контакт добавлен',
-        time: 'только что',
-        unread: 1,
-        avatar: newUser.avatar,
-        online: false
-      }
+    try {
+      // Создаем комнату для чата
+      const response = await fetch('/api/chats', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: tempUserId, contactId: newUser.id })
+      })
       
-      setChats(prev => [newChat, ...prev])
+      const data = await response.json()
+      
+      if (data.success) {
+        // Перезагружаем список чатов
+        await loadChats()
+      }
+    } catch (error) {
+      console.error('Add contact error:', error)
+      throw error
     }
   }
 
@@ -167,14 +170,14 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="spinner"></div>
+        <FiLoader className="animate-spin text-[#2b6bff]" size={32} />
       </div>
     )
   }
 
   return (
     <div className="h-full flex flex-col">
-      <div className="glass px-6 py-4">
+      <div className="glass px-4 py-4">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             {currentUser?.avatar_url ? (
@@ -184,7 +187,7 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
                 <FiUser className="text-white" size={20} />
               </div>
             )}
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-[#2b6bff] to-[#00c6ff] bg-clip-text text-transparent">
+            <h1 className="text-xl font-bold bg-gradient-to-r from-[#2b6bff] to-[#00c6ff] bg-clip-text text-transparent">
               WaxGram
             </h1>
           </div>
@@ -197,17 +200,22 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Поиск сообщений или пользователей..."
-            className="w-full pl-10 pr-4 py-2 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:border-[#2b6bff] text-white placeholder-gray-500"
+            placeholder="Поиск чатов..."
+            className="w-full pl-10 pr-4 py-2 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:border-[#2b6bff] text-white placeholder-gray-500 text-base"
           />
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-2 py-2">
-        {filteredChats.length === 0 ? (
+        {isSearching && filteredChats.length === 0 ? (
+          <div className="flex items-center justify-center py-10">
+            <FiLoader className="animate-spin text-[#2b6bff]" size={24} />
+          </div>
+        ) : filteredChats.length === 0 ? (
           <div className="text-center text-gray-500 py-10">
+            <FiUser size={48} className="mx-auto mb-3 opacity-50" />
             <p>Нет чатов</p>
-            <p className="text-sm mt-2">Найдите пользователя через поиск</p>
+            <p className="text-sm mt-2">Нажмите на кнопку + вверху,<br />чтобы найти пользователя</p>
           </div>
         ) : (
           filteredChats.map((chat, index) => (
@@ -215,12 +223,12 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
               key={chat.id}
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: index * 0.05 }}
+              transition={{ delay: Math.min(index * 0.05, 0.5) }}
               whileHover={{ scale: 1.02 }}
               onClick={() => onSelectChat(chat.id, chat.room_id)}
-              className="flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 cursor-pointer transition-all group"
+              className="flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 cursor-pointer transition-all active:bg-white/10"
             >
-              <div className="relative">
+              <div className="relative flex-shrink-0">
                 <div className="w-12 h-12 rounded-full overflow-hidden bg-gradient-to-br from-[#2b6bff] to-[#0055ff] flex items-center justify-center">
                   {chat.avatar ? (
                     <img src={chat.avatar} alt={chat.name} className="w-full h-full object-cover" />
@@ -236,15 +244,15 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h3 className="font-semibold text-white">{chat.name}</h3>
+                    <h3 className="font-semibold text-white truncate">{chat.name}</h3>
                     <p className="text-xs text-gray-500">@{chat.username}</p>
                   </div>
-                  <span className="text-xs text-gray-400">{chat.time}</span>
+                  <span className="text-xs text-gray-400 flex-shrink-0 ml-2">{chat.time}</span>
                 </div>
                 <div className="flex items-center justify-between mt-1">
                   <p className="text-sm text-gray-400 truncate">{chat.lastMessage}</p>
                   {chat.unread > 0 && (
-                    <span className="ml-2 px-2 py-0.5 bg-[#2b6bff] text-white text-xs rounded-full">
+                    <span className="ml-2 px-2 py-0.5 bg-[#2b6bff] text-white text-xs rounded-full flex-shrink-0">
                       {chat.unread}
                     </span>
                   )}
