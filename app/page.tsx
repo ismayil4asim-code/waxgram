@@ -10,9 +10,10 @@ import { ProfileView } from '@/components/ProfileView'
 import { ChannelsView } from '@/components/ChannelsView'
 import { CreateChannelModal } from '@/components/CreateChannelModal'
 import { ChannelView } from '@/components/ChannelView'
+import { AdminPanel } from '@/components/AdminPanel'
 
 export default function Home() {
-  const [currentView, setCurrentView] = useState<'chats' | 'channels' | 'profile'>('chats')
+  const [currentView, setCurrentView] = useState<'chats' | 'channels' | 'profile' | 'admin'>('chats')
   const [selectedChat, setSelectedChat] = useState<{ id: string; roomId?: string } | null>(null)
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null)
   const [isMobile, setIsMobile] = useState(false)
@@ -66,12 +67,11 @@ export default function Home() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen bg-gradient-to-br from-[#0a0a0a] via-[#0f0f1a] to-[#0a0a0a]">
-        <div className="spinner"></div>
+        <div className="w-8 h-8 border-2 border-[#2b6bff] border-t-transparent rounded-full animate-spin"></div>
       </div>
     )
   }
 
-  // Открытый чат
   if (selectedChat) {
     return (
       <div className="h-screen">
@@ -85,7 +85,6 @@ export default function Home() {
     )
   }
 
-  // Открытый канал
   if (selectedChannel) {
     return (
       <div className="h-screen">
@@ -98,13 +97,10 @@ export default function Home() {
     )
   }
 
-  // Главный экран
   return (
     <div className="flex h-screen bg-gradient-to-br from-[#0a0a0a] via-[#0f0f1a] to-[#0a0a0a] overflow-hidden">
-      {/* Десктопная навигация (скрыта на мобильных) */}
       <Navigation currentView={currentView} onViewChange={setCurrentView} />
       
-      {/* Основной контент */}
       <div className="flex-1 overflow-hidden">
         {currentView === 'chats' && (
           <ChatsList onSelectChat={handleSelectChat} />
@@ -118,15 +114,16 @@ export default function Home() {
         {currentView === 'profile' && (
           <ProfileView onLogout={handleLogout} />
         )}
+        {currentView === 'admin' && (
+          <AdminPanel />
+        )}
       </div>
       
-      {/* Мобильная навигация снизу */}
       <MobileNavigation 
         currentView={currentView} 
         onViewChange={setCurrentView}
       />
       
-      {/* Модальное окно создания канала */}
       <CreateChannelModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
