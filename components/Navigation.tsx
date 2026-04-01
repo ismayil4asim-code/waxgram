@@ -1,14 +1,36 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { FiMessageCircle, FiUsers, FiUser } from 'react-icons/fi'
+import { FiMessageCircle, FiUsers, FiUser, FiShield } from 'react-icons/fi'
+import { supabase } from '@/lib/supabase/client'
 
 interface NavigationProps {
-  currentView: 'chats' | 'channels' | 'profile'
-  onViewChange: (view: 'chats' | 'channels' | 'profile') => void
+  currentView: 'chats' | 'channels' | 'profile' | 'admin'
+  onViewChange: (view: 'chats' | 'channels' | 'profile' | 'admin') => void
 }
 
 export function Navigation({ currentView, onViewChange }: NavigationProps) {
+  const [isDeveloper, setIsDeveloper] = useState(false)
+
+  useEffect(() => {
+    const checkDeveloper = async () => {
+      const userId = localStorage.getItem('temp_user_id')
+      if (userId) {
+        const { data } = await supabase
+          .from('profiles')
+          .select('verified, verified_type')
+          .eq('id', userId)
+          .single()
+        
+        if (data?.verified && data?.verified_type === 'developer') {
+          setIsDeveloper(true)
+        }
+      }
+    }
+    checkDeveloper()
+  }, [])
+
   const navItems = [
     { id: 'chats', icon: FiMessageCircle, label: 'Чаты' },
     { id: 'channels', icon: FiUsers, label: 'Каналы' },
@@ -48,6 +70,27 @@ export function Navigation({ currentView, onViewChange }: NavigationProps) {
             </motion.button>
           )
         })}
+        
+        {isDeveloper && (
+          <motion.button
+            whileTap={{ scale: 0.95 }}
+            onClick={() => onViewChange('admin')}
+            className={`relative p-3 rounded-xl transition-all ${
+              currentView === 'admin' 
+                ? 'bg-gradient-to-r from-purple-600 to-purple-800 text-white' 
+                : 'text-gray-400 hover:text-white hover:bg-white/10'
+            }`}
+            title="Админ-панель"
+          >
+            <FiShield size={22} />
+            {currentView === 'admin' && (
+              <motion.div
+                layoutId="activeNav"
+                className="absolute -left-2 top-1/2 transform -translate-y-1/2 w-1 h-8 bg-purple-500 rounded-full"
+              />
+            )}
+          </motion.button>
+        )}
       </div>
     </div>
   )
