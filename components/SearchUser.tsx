@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { FiSearch, FiUserPlus, FiX, FiUser, FiLoader } from 'react-icons/fi'
 import { supabase } from '@/lib/supabase/client'
@@ -40,7 +40,6 @@ export function SearchUser({ onAddContact }: SearchUserProps) {
       
       if (error) throw error
       
-      // Исключаем текущего пользователя
       const currentUserId = localStorage.getItem('temp_user_id')
       const filtered = (data || []).filter(user => user.id !== currentUserId)
       
@@ -71,8 +70,6 @@ export function SearchUser({ onAddContact }: SearchUserProps) {
     
     try {
       await onAddContact(user)
-      
-      // Закрываем модальное окно после успешного добавления
       setIsOpen(false)
       setSearchQuery('')
       setSearchResults([])
@@ -84,11 +81,34 @@ export function SearchUser({ onAddContact }: SearchUserProps) {
     }
   }
 
+  // Закрываем по Escape
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        setIsOpen(false)
+      }
+    }
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [isOpen])
+
+  // Блокируем скролл при открытом модальном окне
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+    return () => {
+      document.body.style.overflow = ''
+    }
+  }, [isOpen])
+
   return (
     <>
       <button
         onClick={() => setIsOpen(true)}
-        className="p-2 bg-gradient-to-r from-[#2b6bff] to-[#0055ff] rounded-full hover:opacity-90 transition-colors"
+        className="p-2 bg-gradient-to-r from-[#2b6bff] to-[#0055ff] rounded-full hover:opacity-90 transition-colors active:scale-95"
         title="Найти пользователя"
       >
         <FiUserPlus size={20} className="text-white" />
@@ -97,27 +117,36 @@ export function SearchUser({ onAddContact }: SearchUserProps) {
       <AnimatePresence>
         {isOpen && (
           <>
-            <div
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+            {/* Затемненный фон */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50"
               onClick={() => setIsOpen(false)}
             />
+            
+            {/* Модальное окно по центру */}
             <motion.div
-              initial={{ opacity: 0, scale: 0.9, y: 50 }}
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 50 }}
-              className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[90%] max-w-md z-50 p-4"
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[calc(100%-32px)] max-w-md z-50"
             >
-              <div className="glass-card p-6">
-                <div className="flex items-center justify-between mb-4">
+              <div className="glass-card p-5 max-h-[85vh] overflow-y-auto">
+                {/* Заголовок */}
+                <div className="flex items-center justify-between mb-4 sticky top-0 bg-inherit pb-2">
                   <h2 className="text-xl font-bold text-white">Найти пользователя</h2>
                   <button 
                     onClick={() => setIsOpen(false)} 
-                    className="p-1 hover:bg-white/10 rounded-full transition-colors"
+                    className="p-2 hover:bg-white/10 rounded-full transition-colors active:scale-95"
                   >
                     <FiX className="text-gray-400" size={20} />
                   </button>
                 </div>
                 
+                {/* Поисковая строка */}
                 <div className="flex gap-2 mb-4">
                   <div className="relative flex-1">
                     <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
@@ -134,27 +163,35 @@ export function SearchUser({ onAddContact }: SearchUserProps) {
                   <button
                     onClick={handleSearch}
                     disabled={loading}
-                    className="px-4 py-3 bg-gradient-to-r from-[#2b6bff] to-[#0055ff] rounded-xl hover:opacity-90 disabled:opacity-50 transition-all"
+                    className="px-5 py-3 bg-gradient-to-r from-[#2b6bff] to-[#0055ff] rounded-xl hover:opacity-90 disabled:opacity-50 transition-all active:scale-95"
                   >
                     {loading ? <FiLoader className="animate-spin" size={20} /> : 'Найти'}
                   </button>
                 </div>
                 
+                {/* Ошибка */}
                 {error && (
-                  <p className="text-red-400 text-sm text-center mb-4">{error}</p>
+                  <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-xl">
+                    <p className="text-red-400 text-sm text-center">{error}</p>
+                  </div>
                 )}
                 
-                <div className="space-y-2 max-h-96 overflow-y-auto">
+                {/* Результаты поиска */}
+                <div className="space-y-2 max-h-[50vh] overflow-y-auto">
                   {searchResults.length === 0 && searchQuery && !loading && (
-                    <p className="text-center text-gray-400 py-8">Пользователь не найден</p>
+                    <div className="text-center text-gray-400 py-8">
+                      <FiUser size={48} className="mx-auto mb-3 opacity-50" />
+                      <p>Пользователь не найден</p>
+                      <p className="text-xs mt-1">Проверьте правильность написания</p>
+                    </div>
                   )}
                   
                   {searchResults.map((user) => (
                     <motion.div
                       key={user.id}
-                      initial={{ opacity: 0, y: 20 }}
+                      initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="flex items-center justify-between p-3 rounded-xl hover:bg-white/5 transition-colors"
+                      className="flex items-center justify-between p-3 rounded-xl hover:bg-white/5 transition-colors active:bg-white/10"
                     >
                       <div className="flex items-center gap-3 flex-1 min-w-0">
                         <div className="w-12 h-12 rounded-full overflow-hidden bg-gradient-to-br from-[#2b6bff] to-[#0055ff] flex items-center justify-center flex-shrink-0">
@@ -175,7 +212,7 @@ export function SearchUser({ onAddContact }: SearchUserProps) {
                       <button
                         onClick={() => handleAddContact(user)}
                         disabled={addingUserId === user.id}
-                        className="ml-2 p-2 bg-[#2b6bff]/20 rounded-full hover:bg-[#2b6bff]/40 transition-colors flex-shrink-0 disabled:opacity-50"
+                        className="ml-2 p-2 bg-[#2b6bff]/20 rounded-full hover:bg-[#2b6bff]/40 transition-colors flex-shrink-0 disabled:opacity-50 active:scale-95"
                       >
                         {addingUserId === user.id ? (
                           <FiLoader className="animate-spin text-[#2b6bff]" size={16} />
@@ -186,6 +223,15 @@ export function SearchUser({ onAddContact }: SearchUserProps) {
                     </motion.div>
                   ))}
                 </div>
+                
+                {/* Подсказка */}
+                {searchResults.length === 0 && !searchQuery && !loading && (
+                  <div className="text-center text-gray-500 py-8">
+                    <FiSearch size={48} className="mx-auto mb-3 opacity-50" />
+                    <p>Введите username для поиска</p>
+                    <p className="text-xs mt-1">Например: john_doe</p>
+                  </div>
+                )}
               </div>
             </motion.div>
           </>
