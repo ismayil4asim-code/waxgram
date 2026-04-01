@@ -137,7 +137,20 @@ export function ChatInterface({ chatId, roomId: initialRoomId, onBack, isMobile 
         filter: `room_id=eq.${roomId}`,
       }, (payload) => {
         const newMessage = payload.new as Message
-        setMessages(prev => [...prev, newMessage])
+        // Заменяем временное сообщение реальным, или добавляем входящее
+        setMessages(prev => {
+          const hasTempMessage = prev.some(
+            msg => msg.id.startsWith('temp-') && msg.content === newMessage.content && msg.sender_id === newMessage.sender_id
+          )
+          if (hasTempMessage) {
+            return prev.map(msg =>
+              msg.id.startsWith('temp-') && msg.content === newMessage.content && msg.sender_id === newMessage.sender_id
+                ? { ...newMessage, read_by: [] }
+                : msg
+            )
+          }
+          return [...prev, { ...newMessage, read_by: [] }]
+        })
         setTimeout(() => {
           messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
         }, 100)
@@ -149,7 +162,7 @@ export function ChatInterface({ chatId, roomId: initialRoomId, onBack, isMobile 
         filter: `room_id=eq.${roomId}`,
       }, (payload) => {
         const updated = payload.new as Message
-        setMessages(prev => prev.map(msg => msg.id === updated.id ? updated : msg))
+        setMessages(prev => prev.map(msg => msg.id === updated.id ? { ...updated, read_by: msg.read_by } : msg))
       })
       .on('postgres_changes', {
         event: 'INSERT',
@@ -167,8 +180,24 @@ export function ChatInterface({ chatId, roomId: initialRoomId, onBack, isMobile 
 
   const handleSendMessage = async (text: string) => {
     if (!text.trim() || !roomId || !userId) return
-    
-    const { error } = await supabase
+
+    // Оптимистичное обновление — сразу показываем сообщение
+    const tempId = `temp-${Date.now()}`
+    const optimisticMessage: Message = {
+      id: tempId,
+      content: text,
+      sender_id: userId,
+      created_at: new Date().toISOString(),
+      deleted: false,
+      read_by: [],
+    }
+
+    setMessages(prev => [...prev, optimisticMessage])
+    setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }, 50)
+
+    const { data, error } = await supabase
       .from('messages')
       .insert({
         room_id: roomId,
@@ -176,10 +205,19 @@ export function ChatInterface({ chatId, roomId: initialRoomId, onBack, isMobile 
         content: text,
         message_type: 'text'
       })
-    
+      .select()
+      .single()
+
     if (error) {
       console.error('Send error:', error)
       showToast('Ошибка отправки сообщения', 'error')
+      // Убираем временное сообщение при ошибке
+      setMessages(prev => prev.filter(msg => msg.id !== tempId))
+    } else if (data) {
+      // Заменяем временное сообщение реальным (с настоящим id из БД)
+      setMessages(prev => prev.map(msg =>
+        msg.id === tempId ? { ...data, read_by: [] } : msg
+      ))
     }
   }
 
