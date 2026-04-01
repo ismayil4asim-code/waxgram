@@ -50,5 +50,21 @@ export function Navigation({ currentView, onViewChange }: NavigationProps) {
         })}
       </div>
     </div>
+    // Добавьте в navItems, если пользователь разработчик
+{currentUser?.verified_type === 'developer' && (
+  <motion.button
+    whileHover={{ scale: 1.1 }}
+    whileTap={{ scale: 0.95 }}
+    onClick={() => onViewChange('admin')}
+    className={`relative p-3 rounded-xl transition-all ${
+      currentView === 'admin' 
+        ? 'bg-gradient-to-r from-purple-600 to-purple-800 text-white' 
+        : 'text-gray-400 hover:text-white hover:bg-white/10'
+    }`}
+    title="Админ-панель"
+  >
+    <FiShield size={22} />
+  </motion.button>
+)}
   )
 }
