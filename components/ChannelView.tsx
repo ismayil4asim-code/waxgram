@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { FiArrowLeft, FiMoreVertical, FiUsers, FiShare2, FiBell, FiUser, FiLoader, FiSend } from 'react-icons/fi'
+import { FiArrowLeft, FiMoreVertical, FiUsers, FiShare2, FiBell, FiUser, FiLoader, FiSend, FiHeart, FiMessageCircle } from 'react-icons/fi'
 import { supabase } from '@/lib/supabase/client'
 
 interface ChannelViewProps {
@@ -14,20 +14,22 @@ interface ChannelViewProps {
 interface Post {
   id: string
   content: string
-  author: string
-  authorAvatar?: string
-  time: string
+  author_id: string
+  author_name: string
+  author_avatar?: string
   views: number
   comments: number
+  created_at: string
 }
 
 interface Channel {
   id: string
   name: string
   description: string
-  subscribers: number
-  avatar: string | null
-  isOwner: boolean
+  subscribers_count: number
+  avatar_url: string | null
+  owner_id: string
+  is_owner?: boolean
 }
 
 export function ChannelView({ channelId, onBack, isMobile = false }: ChannelViewProps) {
@@ -36,69 +38,124 @@ export function ChannelView({ channelId, onBack, isMobile = false }: ChannelView
   const [newPost, setNewPost] = useState('')
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    const loadChannel = async () => {
-      const savedChannels = localStorage.getItem('channels')
-      if (savedChannels) {
-        const channels = JSON.parse(savedChannels)
-        const found = channels.find((c: any) => c.id === channelId)
-        setChannel(found)
-      }
+    const loadData = async () => {
+      const userId = localStorage.getItem('temp_user_id')
+      setCurrentUserId(userId)
       
-      const savedPosts = localStorage.getItem(`channel_posts_${channelId}`)
-      if (savedPosts) {
-        setPosts(JSON.parse(savedPosts))
-      } else {
-        const demoPosts: Post[] = [
-          {
-            id: '1',
-            content: 'Добро пожаловать в канал! Здесь будут публиковаться важные новости и обновления.',
-            author: 'Админ',
-            authorAvatar: 'https://i.ibb.co/dsywjJ5Y/W.png',
-            time: new Date().toISOString(),
-            views: 5,
-            comments: 2
-          }
-        ]
-        setPosts(demoPosts)
-        localStorage.setItem(`channel_posts_${channelId}`, JSON.stringify(demoPosts))
+      try {
+        // Загружаем канал
+        const { data: channelData, error: channelError } = await supabase
+          .from('channels')
+          .select('*')
+          .eq('id', channelId)
+          .single()
+        
+        if (channelError) throw channelError
+        
+        setChannel({
+          ...channelData,
+          is_owner: channelData.owner_id === userId
+        })
+        
+        // Загружаем посты
+        const { data: postsData, error: postsError } = await supabase
+          .from('channel_posts')
+          .select(`
+            *,
+            profiles:author_id (username, avatar_url)
+          `)
+          .eq('channel_id', channelId)
+          .order('created_at', { ascending: false })
+        
+        if (postsError) throw postsError
+        
+        const formattedPosts = postsData?.map(post => ({
+          ...post,
+          author_name: post.profiles?.username || 'Пользователь',
+          author_avatar: post.profiles?.avatar_url
+        })) || []
+        
+        setPosts(formattedPosts)
+      } catch (error) {
+        console.error('Load channel error:', error)
+      } finally {
+        setLoading(false)
       }
-      
-      setLoading(false)
     }
     
-    loadChannel()
+    loadData()
+    
+    // Подписка на новые посты
+    const subscription = supabase
+      .channel(`channel:${channelId}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'channel_posts',
+        filter: `channel_id=eq.${channelId}`
+      }, async (payload) => {
+        const newPost = payload.new as any
+        const { data: author } = await supabase
+          .from('profiles')
+          .select('username, avatar_url')
+          .eq('id', newPost.author_id)
+          .single()
+        
+        setPosts(prev => [{
+          ...newPost,
+          author_name: author?.username || 'Пользователь',
+          author_avatar: author?.avatar_url
+        }, ...prev])
+      })
+      .subscribe()
+    
+    return () => {
+      subscription.unsubscribe()
+    }
   }, [channelId])
 
   const handleSendPost = async () => {
-    if (!newPost.trim() || !channel) return
+    if (!newPost.trim() || !channel || !currentUserId) return
     
     setSending(true)
     
-    const currentUsername = localStorage.getItem('temp_username') || 'Вы'
-    const currentAvatar = localStorage.getItem('user_avatar') || undefined
-    
-    const post: Post = {
-      id: Date.now().toString(),
-      content: newPost,
-      author: currentUsername,
-      authorAvatar: currentAvatar,
-      time: new Date().toISOString(),
-      views: 0,
-      comments: 0
+    try {
+      const { data, error } = await supabase
+        .from('channel_posts')
+        .insert({
+          channel_id: channelId,
+          author_id: currentUserId,
+          content: newPost,
+          views: 0,
+          comments: 0
+        })
+        .select()
+        .single()
+      
+      if (error) throw error
+      
+      const { data: author } = await supabase
+        .from('profiles')
+        .select('username, avatar_url')
+        .eq('id', currentUserId)
+        .single()
+      
+      setPosts(prev => [{
+        ...data,
+        author_name: author?.username || 'Вы',
+        author_avatar: author?.avatar_url
+      }, ...prev])
+      
+      setNewPost('')
+    } catch (error) {
+      console.error('Send post error:', error)
+    } finally {
+      setSending(false)
     }
-    
-    const updatedPosts = [post, ...posts]
-    setPosts(updatedPosts)
-    localStorage.setItem(`channel_posts_${channelId}`, JSON.stringify(updatedPosts))
-    setNewPost('')
-    setSending(false)
-    
-    setTimeout(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-    }, 100)
   }
 
   const formatTime = (date: string) => {
@@ -138,8 +195,8 @@ export function ChannelView({ channelId, onBack, isMobile = false }: ChannelView
           </button>
           
           <div className="w-10 h-10 rounded-full overflow-hidden bg-gradient-to-br from-[#2b6bff] to-[#0055ff] flex items-center justify-center">
-            {channel.avatar ? (
-              <img src={channel.avatar} alt={channel.name} className="w-full h-full object-cover" />
+            {channel.avatar_url ? (
+              <img src={channel.avatar_url} alt={channel.name} className="w-full h-full object-cover" />
             ) : (
               <FiUsers className="text-white" size={20} />
             )}
@@ -147,7 +204,7 @@ export function ChannelView({ channelId, onBack, isMobile = false }: ChannelView
           
           <div>
             <h1 className="font-semibold text-white">{channel.name}</h1>
-            <p className="text-xs text-gray-400">{channel.subscribers} подписчиков</p>
+            <p className="text-xs text-gray-400">{channel.subscribers_count} подписчиков</p>
           </div>
         </div>
         
@@ -167,6 +224,16 @@ export function ChannelView({ channelId, onBack, isMobile = false }: ChannelView
       {/* Posts */}
       <div className="flex-1 overflow-y-auto px-4 py-4">
         <div className="max-w-4xl mx-auto space-y-3">
+          {posts.length === 0 && (
+            <div className="text-center text-gray-500 py-10">
+              <FiMessageCircle size={48} className="mx-auto mb-3 opacity-50" />
+              <p>Нет постов</p>
+              {channel.is_owner && (
+                <p className="text-sm mt-2">Напишите первый пост в канале</p>
+              )}
+            </div>
+          )}
+          
           {posts.map((post) => (
             <motion.div
               key={post.id}
@@ -176,25 +243,25 @@ export function ChannelView({ channelId, onBack, isMobile = false }: ChannelView
             >
               <div className="flex items-start gap-3">
                 <div className="w-10 h-10 rounded-full overflow-hidden bg-gradient-to-br from-[#2b6bff] to-[#0055ff] flex items-center justify-center flex-shrink-0">
-                  {post.authorAvatar ? (
-                    <img src={post.authorAvatar} alt={post.author} className="w-full h-full object-cover" />
+                  {post.author_avatar ? (
+                    <img src={post.author_avatar} alt={post.author_name} className="w-full h-full object-cover" />
                   ) : (
                     <FiUser className="text-white" size={18} />
                   )}
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="font-semibold text-white">{post.author}</span>
-                    <span className="text-xs text-gray-500">{formatTime(post.time)}</span>
+                    <span className="font-semibold text-white">{post.author_name}</span>
+                    <span className="text-xs text-gray-500">{formatTime(post.created_at)}</span>
                   </div>
                   <p className="text-gray-200 whitespace-pre-wrap">{post.content}</p>
                   <div className="flex items-center gap-4 mt-3">
-                    <span className="flex items-center gap-1 text-gray-400 text-xs">
-                      👁️ {post.views}
-                    </span>
-                    <span className="flex items-center gap-1 text-gray-400 text-xs">
-                      💬 {post.comments}
-                    </span>
+                    <button className="flex items-center gap-1 text-gray-400 hover:text-[#2b6bff] transition-colors text-xs">
+                      <FiHeart size={14} /> {post.views}
+                    </button>
+                    <button className="flex items-center gap-1 text-gray-400 hover:text-[#2b6bff] transition-colors text-xs">
+                      <FiMessageCircle size={14} /> {post.comments}
+                    </button>
                   </div>
                 </div>
               </div>
@@ -205,7 +272,7 @@ export function ChannelView({ channelId, onBack, isMobile = false }: ChannelView
       </div>
 
       {/* Input for owner */}
-      {channel.isOwner && (
+      {channel.is_owner && (
         <div className="glass border-t border-white/10 p-3 safe-bottom">
           <div className="flex items-center gap-2 bg-white/5 rounded-full p-1 pl-4 border border-white/10">
             <input
