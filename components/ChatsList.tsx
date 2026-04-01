@@ -23,8 +23,16 @@ interface ChatsListProps {
 export function ChatsList({ onSelectChat }: ChatsListProps) {
   const [chats, setChats] = useState<Chat[]>([])
   const [searchQuery, setSearchQuery] = useState('')
+  const [currentUser, setCurrentUser] = useState<any>(null)
 
   useEffect(() => {
+    // Загружаем текущего пользователя
+    const tempUserId = localStorage.getItem('temp_user_id')
+    const users = JSON.parse(localStorage.getItem('users') || '[]')
+    const user = users.find((u: any) => u.id === tempUserId)
+    setCurrentUser(user)
+    
+    // Загружаем контакты
     const savedContacts = localStorage.getItem('contacts')
     if (savedContacts) {
       setChats(JSON.parse(savedContacts))
@@ -84,7 +92,13 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
       <div className="glass px-6 py-4">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            <img src="https://i.ibb.co/dsywjJ5Y/W.png" alt="WaxGram" className="w-10 h-10 rounded-full" />
+            {currentUser?.avatarUrl ? (
+              <img src={currentUser.avatarUrl} alt={currentUser.username} className="w-10 h-10 rounded-full object-cover" />
+            ) : (
+              <div className="w-10 h-10 bg-gradient-to-br from-[#2b6bff] to-[#0055ff] rounded-full flex items-center justify-center">
+                <FiUser className="text-white" size={20} />
+              </div>
+            )}
             <h1 className="text-2xl font-bold bg-gradient-to-r from-[#2b6bff] to-[#00c6ff] bg-clip-text text-transparent">
               WaxGram
             </h1>
