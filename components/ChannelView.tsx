@@ -56,24 +56,40 @@ export function ChannelView({ channelId, onBack, isMobile = false }: ChannelView
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const loadPosts = async () => {
+    if (!currentUserId) return
+    
     try {
+      // Загружаем посты с информацией о лайках
       const { data: postsData, error: postsError } = await supabase
         .from('channel_posts')
         .select(`
           *,
-          profiles:author_id (username, avatar_url),
-          post_likes:channel_post_likes!left (user_id)
+          profiles:author_id (username, avatar_url)
         `)
         .eq('channel_id', channelId)
         .order('created_at', { ascending: false })
       
       if (postsError) throw postsError
       
+      // Загружаем все лайки текущего пользователя для этих постов
+      const postIds = postsData?.map(p => p.id) || []
+      let userLikes: string[] = []
+      
+      if (postIds.length > 0) {
+        const { data: likesData } = await supabase
+          .from('channel_post_likes')
+          .select('post_id')
+          .eq('user_id', currentUserId)
+          .in('post_id', postIds)
+        
+        userLikes = likesData?.map(l => l.post_id) || []
+      }
+      
       const formattedPosts = postsData?.map(post => ({
         ...post,
         author_name: post.profiles?.username || 'Пользователь',
         author_avatar: post.profiles?.avatar_url,
-        liked_by_user: post.post_likes?.some((like: any) => like.user_id === currentUserId) || false,
+        liked_by_user: userLikes.includes(post.id),
         views: post.views || 0,
         comments: post.comments || 0
       })) || []
@@ -214,13 +230,13 @@ export function ChannelView({ channelId, onBack, isMobile = false }: ChannelView
           // Обновляем счетчик лайков в таблице постов
           await supabase
             .from('channel_posts')
-            .update({ views: post.views - 1 })
+            .update({ views: Math.max(0, post.views - 1) })
             .eq('id', postId)
           
           // Обновляем локальное состояние
           setPosts(prev => prev.map(p => 
             p.id === postId 
-              ? { ...p, views: p.views - 1, liked_by_user: false }
+              ? { ...p, views: Math.max(0, p.views - 1), liked_by_user: false }
               : p
           ))
         }
