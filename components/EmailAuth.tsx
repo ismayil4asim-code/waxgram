@@ -15,7 +15,7 @@ export function EmailAuth() {
   const [timer, setTimer] = useState(0)
   const [debugCode, setDebugCode] = useState('')
   const router = useRouter()
-  const codeRef = useRef('')
+  const savedCodeRef = useRef('')
 
   const sendCode = async () => {
     if (!email) return
@@ -39,7 +39,7 @@ export function EmailAuth() {
       
       if (data.debugCode) {
         setDebugCode(data.debugCode)
-        codeRef.current = data.debugCode
+        savedCodeRef.current = data.debugCode
       }
 
       const interval = setInterval(() => {
@@ -78,7 +78,6 @@ export function EmailAuth() {
         throw new Error(data.error)
       }
 
-      // Успешный вход
       localStorage.setItem('temp_user_id', data.userId)
       localStorage.setItem('temp_email', data.email)
       localStorage.setItem('temp_username', data.username)
@@ -95,14 +94,18 @@ export function EmailAuth() {
     setError('')
     
     try {
-      console.log('Registering with:', { email, code, ...registerData })
+      console.log('Registering with:', { 
+        email, 
+        code: code || savedCodeRef.current, 
+        ...registerData 
+      })
       
       const res = await fetch('/api/auth/verify-email-code', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           email, 
-          code,
+          code: code || savedCodeRef.current,
           ...registerData
         })
       })
