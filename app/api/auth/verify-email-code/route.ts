@@ -27,14 +27,13 @@ export async function POST(request: NextRequest) {
     
     console.log('Code record found:', !!codeRecord)
     
-    // Если код не найден или истек
     if (codeError || !codeRecord) {
       console.log('Code error:', codeError)
       return NextResponse.json({ error: 'Неверный или истекший код' }, { status: 400 })
     }
     
     // Проверяем существует ли пользователь
-    const { data: existingUser, error: userError } = await supabaseAdmin
+    const { data: existingUser } = await supabaseAdmin
       .from('profiles')
       .select('id, username')
       .eq('email', email)
@@ -67,49 +66,50 @@ export async function POST(request: NextRequest) {
       })
     }
     
-    // Если пользователь не существует и нет данных для регистрации
-    if (!username) {
-      console.log('No username provided, registration required')
-      return NextResponse.json({ error: 'Требуется регистрация' }, { status: 400 })
-    }
-    
-    console.log('Creating new user with data:', { email, username, bio, birthDate, avatarUrl })
-    
-    // Создаем нового пользователя
-    const { data: newUser, error: createError } = await supabaseAdmin
-      .from('profiles')
-      .insert({
+    // Если пользователь не существует и есть username - регистрация
+    if (username) {
+      console.log('Creating new user with data:', { email, username, bio, birthDate })
+      
+      // Создаем нового пользователя
+      const { data: newUser, error: createError } = await supabaseAdmin
+        .from('profiles')
+        .insert({
+          email: email,
+          username: username,
+          bio: bio || '',
+          birth_date: birthDate || null,
+          avatar_url: avatarUrl || null,
+          online: true,
+          last_seen: new Date().toISOString()
+        })
+        .select()
+        .single()
+      
+      if (createError) {
+        console.error('Create user error:', createError)
+        return NextResponse.json({ error: 'Ошибка создания пользователя: ' + createError.message }, { status: 500 })
+      }
+      
+      console.log('User created successfully:', newUser.id)
+      
+      // Отмечаем код как использованный
+      await supabaseAdmin
+        .from('email_verification_codes')
+        .update({ used: true })
+        .eq('id', codeRecord.id)
+      
+      return NextResponse.json({
+        success: true,
+        userId: newUser.id,
         email: email,
-        username: username,
-        bio: bio || '',
-        birth_date: birthDate || null,
-        avatar_url: avatarUrl || null,
-        online: true,
-        last_seen: new Date().toISOString()
+        isNewUser: true,
+        username: username
       })
-      .select()
-      .single()
-    
-    if (createError) {
-      console.error('Create user error:', createError)
-      return NextResponse.json({ error: 'Ошибка создания пользователя: ' + createError.message }, { status: 500 })
     }
     
-    console.log('User created successfully:', newUser.id)
-    
-    // Отмечаем код как использованный
-    await supabaseAdmin
-      .from('email_verification_codes')
-      .update({ used: true })
-      .eq('id', codeRecord.id)
-    
-    return NextResponse.json({
-      success: true,
-      userId: newUser.id,
-      email: email,
-      isNewUser: true,
-      username: username
-    })
+    // Если пользователь не существует и нет username - требуется регистрация
+    console.log('No username provided, registration required')
+    return NextResponse.json({ error: 'Требуется регистрация' }, { status: 400 })
     
   } catch (error) {
     console.error('Verify code error:', error)
