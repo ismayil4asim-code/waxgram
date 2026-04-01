@@ -6,7 +6,7 @@ import { FiUser, FiCalendar, FiInfo, FiCamera, FiCheck, FiArrowLeft, FiLoader } 
 
 interface RegisterFormProps {
   email: string
-  onRegister: (data: { username: string; bio: string; birthDate: string; avatarUrl: string | null }) => void
+  onRegister: (data: { username: string; bio: string; birthDate: string; avatarUrl: string | null }) => Promise<void>
   onBack: () => void
 }
 
@@ -35,7 +35,9 @@ export function RegisterForm({ email, onRegister, onBack }: RegisterFormProps) {
     reader.readAsDataURL(file)
   }
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
     if (!username.trim()) {
       setError('Придумайте имя пользователя')
       return
@@ -67,6 +69,7 @@ export function RegisterForm({ email, onRegister, onBack }: RegisterFormProps) {
     }
     
     try {
+      console.log('Submitting registration for:', email)
       await onRegister({
         username: username.trim(),
         bio: bio.trim(),
@@ -74,137 +77,140 @@ export function RegisterForm({ email, onRegister, onBack }: RegisterFormProps) {
         avatarUrl
       })
     } catch (err: any) {
+      console.error('Registration error in form:', err)
       setError(err.message || 'Ошибка регистрации')
       setIsSubmitting(false)
     }
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="glass-card p-8"
-    >
-      <button
-        onClick={onBack}
-        className="mb-4 flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
+    <form onSubmit={handleSubmit}>
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="glass-card p-8"
       >
-        <FiArrowLeft size={18} />
-        <span className="text-sm">Назад</span>
-      </button>
-      
-      <h2 className="text-2xl font-bold text-white text-center mb-2">
-        Завершите регистрацию
-      </h2>
-      
-      <p className="text-gray-400 text-sm text-center mb-6">
-        Аккаунт для <span className="text-[#2b6bff]">{email}</span>
-      </p>
-      
-      {/* Avatar */}
-      <div className="flex justify-center mb-6">
-        <div className="relative">
-          <div className="w-24 h-24 rounded-full overflow-hidden bg-gradient-to-br from-[#2b6bff] to-[#0055ff] flex items-center justify-center">
-            {avatar ? (
-              <img src={avatar} alt="Avatar" className="w-full h-full object-cover" />
-            ) : (
-              <FiUser className="text-white" size={40} />
-            )}
+        <button
+          type="button"
+          onClick={onBack}
+          className="mb-4 flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
+        >
+          <FiArrowLeft size={18} />
+          <span className="text-sm">Назад</span>
+        </button>
+        
+        <h2 className="text-2xl font-bold text-white text-center mb-2">
+          Завершите регистрацию
+        </h2>
+        
+        <p className="text-gray-400 text-sm text-center mb-6">
+          Аккаунт для <span className="text-[#2b6bff]">{email}</span>
+        </p>
+        
+        {/* Avatar */}
+        <div className="flex justify-center mb-6">
+          <div className="relative">
+            <div className="w-24 h-24 rounded-full overflow-hidden bg-gradient-to-br from-[#2b6bff] to-[#0055ff] flex items-center justify-center">
+              {avatar ? (
+                <img src={avatar} alt="Avatar" className="w-full h-full object-cover" />
+              ) : (
+                <FiUser className="text-white" size={40} />
+              )}
+            </div>
+            <label className="absolute bottom-0 right-0 p-2 bg-[#2b6bff] rounded-full cursor-pointer hover:bg-[#0055ff] transition-colors">
+              {uploading ? (
+                <FiLoader size={16} className="text-white animate-spin" />
+              ) : (
+                <FiCamera size={16} className="text-white" />
+              )}
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleAvatarUpload}
+                className="hidden"
+              />
+            </label>
           </div>
-          <label className="absolute bottom-0 right-0 p-2 bg-[#2b6bff] rounded-full cursor-pointer hover:bg-[#0055ff] transition-colors">
-            {uploading ? (
-              <FiLoader size={16} className="text-white animate-spin" />
-            ) : (
-              <FiCamera size={16} className="text-white" />
-            )}
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handleAvatarUpload}
-              className="hidden"
-            />
+        </div>
+        
+        {/* Username */}
+        <div className="mb-4">
+          <label className="block text-sm text-gray-400 mb-2">
+            Имя пользователя *
           </label>
+          <div className="relative">
+            <FiUser className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => {
+                setUsername(e.target.value)
+                setError('')
+              }}
+              placeholder="например: john_doe"
+              className="w-full pl-12 pr-4 py-3 bg-white/5 border border-gray-700 rounded-xl focus:outline-none focus:border-[#2b6bff] text-white"
+              required
+            />
+          </div>
+          <p className="text-xs text-gray-500 mt-1">Только буквы, цифры и подчеркивания. 3-20 символов</p>
         </div>
-      </div>
-      
-      {/* Username */}
-      <div className="mb-4">
-        <label className="block text-sm text-gray-400 mb-2">
-          Имя пользователя *
-        </label>
-        <div className="relative">
-          <FiUser className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
-          <input
-            type="text"
-            value={username}
-            onChange={(e) => {
-              setUsername(e.target.value)
-              setError('')
-            }}
-            placeholder="например: john_doe"
-            className="w-full pl-12 pr-4 py-3 bg-white/5 border border-gray-700 rounded-xl focus:outline-none focus:border-[#2b6bff] text-white"
-          />
+        
+        {/* Birth Date */}
+        <div className="mb-4">
+          <label className="block text-sm text-gray-400 mb-2">
+            Дата рождения
+          </label>
+          <div className="relative">
+            <FiCalendar className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+            <input
+              type="date"
+              value={birthDate}
+              onChange={(e) => setBirthDate(e.target.value)}
+              className="w-full pl-12 pr-4 py-3 bg-white/5 border border-gray-700 rounded-xl focus:outline-none focus:border-[#2b6bff] text-white"
+            />
+          </div>
         </div>
-        <p className="text-xs text-gray-500 mt-1">Только буквы, цифры и подчеркивания. 3-20 символов</p>
-      </div>
-      
-      {/* Birth Date */}
-      <div className="mb-4">
-        <label className="block text-sm text-gray-400 mb-2">
-          Дата рождения
-        </label>
-        <div className="relative">
-          <FiCalendar className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
-          <input
-            type="date"
-            value={birthDate}
-            onChange={(e) => setBirthDate(e.target.value)}
-            className="w-full pl-12 pr-4 py-3 bg-white/5 border border-gray-700 rounded-xl focus:outline-none focus:border-[#2b6bff] text-white"
-          />
+        
+        {/* Bio */}
+        <div className="mb-6">
+          <label className="block text-sm text-gray-400 mb-2">
+            О себе
+          </label>
+          <div className="relative">
+            <FiInfo className="absolute left-4 top-4 text-gray-400" size={18} />
+            <textarea
+              value={bio}
+              onChange={(e) => setBio(e.target.value)}
+              placeholder="Расскажите немного о себе..."
+              rows={3}
+              className="w-full pl-12 pr-4 py-3 bg-white/5 border border-gray-700 rounded-xl focus:outline-none focus:border-[#2b6bff] text-white resize-none"
+            />
+          </div>
+          <p className="text-xs text-gray-500 mt-1">Максимум 150 символов</p>
         </div>
-      </div>
-      
-      {/* Bio */}
-      <div className="mb-6">
-        <label className="block text-sm text-gray-400 mb-2">
-          О себе
-        </label>
-        <div className="relative">
-          <FiInfo className="absolute left-4 top-4 text-gray-400" size={18} />
-          <textarea
-            value={bio}
-            onChange={(e) => setBio(e.target.value)}
-            placeholder="Расскажите немного о себе..."
-            rows={3}
-            className="w-full pl-12 pr-4 py-3 bg-white/5 border border-gray-700 rounded-xl focus:outline-none focus:border-[#2b6bff] text-white resize-none"
-          />
-        </div>
-        <p className="text-xs text-gray-500 mt-1">Максимум 150 символов</p>
-      </div>
-      
-      {error && (
-        <p className="text-red-400 text-sm text-center mb-4">{error}</p>
-      )}
-      
-      <motion.button
-        whileHover={{ scale: 1.02 }}
-        whileTap={{ scale: 0.98 }}
-        onClick={handleSubmit}
-        disabled={!username.trim() || uploading || isSubmitting}
-        className="w-full bg-gradient-to-r from-[#2b6bff] to-[#0055ff] text-white py-3 rounded-xl font-medium hover:opacity-90 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
-      >
-        {isSubmitting ? (
-          <>
-            <FiLoader size={18} className="animate-spin" />
-            Регистрация...
-          </>
-        ) : (
-          <>
-            <FiCheck size={18} />
-            Завершить регистрацию
-          </>
+        
+        {error && (
+          <p className="text-red-400 text-sm text-center mb-4">{error}</p>
         )}
-      </motion.button>
-    </motion.div>
+        
+        <button
+          type="submit"
+          disabled={!username.trim() || uploading || isSubmitting}
+          className="w-full bg-gradient-to-r from-[#2b6bff] to-[#0055ff] text-white py-3 rounded-xl font-medium hover:opacity-90 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+        >
+          {isSubmitting ? (
+            <>
+              <FiLoader size={18} className="animate-spin" />
+              Регистрация...
+            </>
+          ) : (
+            <>
+              <FiCheck size={18} />
+              Завершить регистрацию
+            </>
+          )}
+        </button>
+      </motion.div>
+    </form>
   )
 }
