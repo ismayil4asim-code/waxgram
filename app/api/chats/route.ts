@@ -5,22 +5,19 @@ export async function POST(request: NextRequest) {
   try {
     const { userId, contactId } = await request.json()
     
+    console.log('Creating chat between:', userId, contactId)
+    
     if (!userId || !contactId) {
       return NextResponse.json({ error: 'userId и contactId обязательны' }, { status: 400 })
     }
     
-    // Проверяем, существует ли уже комната между этими пользователями
-    const { data: existingRooms, error: findError } = await supabaseAdmin
+    // Проверяем, существует ли уже комната
+    const { data: userRooms } = await supabaseAdmin
       .from('room_members')
       .select('room_id')
       .eq('user_id', userId)
     
-    if (findError) {
-      console.error('Find error:', findError)
-      return NextResponse.json({ error: 'Ошибка поиска комнаты' }, { status: 500 })
-    }
-    
-    const roomIds = existingRooms?.map(r => r.room_id) || []
+    const roomIds = userRooms?.map(r => r.room_id) || []
     
     let roomId = null
     
@@ -30,8 +27,7 @@ export async function POST(request: NextRequest) {
         .select('room_id')
         .eq('user_id', contactId)
         .in('room_id', roomIds)
-        .limit(1)
-        .single()
+        .maybeSingle()
       
       if (mutualRoom) {
         roomId = mutualRoom.room_id
@@ -60,6 +56,8 @@ export async function POST(request: NextRequest) {
           { room_id: roomId, user_id: userId },
           { room_id: roomId, user_id: contactId }
         ])
+      
+      console.log('Created new room:', roomId)
     }
     
     return NextResponse.json({
