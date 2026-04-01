@@ -9,12 +9,12 @@ interface Channel {
   id: string
   name: string
   description: string
-  subscribers: number
-  avatar: string | null
-  isOwner: boolean
-  owner_id?: string
-  owner_name?: string
-  created_at?: string
+  subscribers_count: number
+  avatar_url: string | null
+  owner_id: string
+  created_at: string
+  is_owner?: boolean
+  is_subscribed?: boolean
 }
 
 interface ChannelsViewProps {
@@ -33,26 +33,25 @@ export function ChannelsView({ onCreateChannel, onSelectChannel }: ChannelsViewP
     setCurrentUserId(userId)
     
     try {
-      // Загружаем каналы из localStorage (в будущем из Supabase)
-      const savedChannels = localStorage.getItem('channels')
-      if (savedChannels) {
-        setChannels(JSON.parse(savedChannels))
-      } else {
-        const defaultChannels: Channel[] = [
-          {
-            id: '1',
-            name: 'WaxGram Official',
-            description: 'Официальный канал WaxGram. Новости и обновления',
-            subscribers: 128,
-            avatar: 'https://i.ibb.co/dsywjJ5Y/W.png',
-            isOwner: false,
-            owner_id: 'system',
-            owner_name: 'WaxGram'
-          }
-        ]
-        setChannels(defaultChannels)
-        localStorage.setItem('channels', JSON.stringify(defaultChannels))
-      }
+      // Загружаем все каналы
+      const { data: channelsData, error: channelsError } = await supabase
+        .from('channels')
+        .select(`
+          *,
+          channel_subscribers!left (user_id)
+        `)
+        .order('created_at', { ascending: false })
+      
+      if (channelsError) throw channelsError
+      
+      // Форматируем данные
+      const formattedChannels = channelsData?.map(channel => ({
+        ...channel,
+        is_owner: channel.owner_id === userId,
+        is_subscribed: channel.channel_subscribers?.some((sub: any) => sub.user_id === userId) || false
+      })) || []
+      
+      setChannels(formattedChannels)
     } catch (error) {
       console.error('Load channels error:', error)
     } finally {
@@ -62,11 +61,23 @@ export function ChannelsView({ onCreateChannel, onSelectChannel }: ChannelsViewP
 
   useEffect(() => {
     loadChannels()
+    
+    // Подписка на изменения каналов
+    const subscription = supabase
+      .channel('channels')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'channels' }, () => {
+        loadChannels()
+      })
+      .subscribe()
+    
+    return () => {
+      subscription.unsubscribe()
+    }
   }, [])
 
   const filteredChannels = channels.filter(channel =>
     channel.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    channel.description.toLowerCase().includes(searchQuery.toLowerCase())
+    (channel.description && channel.description.toLowerCase().includes(searchQuery.toLowerCase()))
   )
 
   if (loading) {
@@ -79,7 +90,6 @@ export function ChannelsView({ onCreateChannel, onSelectChannel }: ChannelsViewP
 
   return (
     <div className="h-full flex flex-col">
-      {/* Header */}
       <div className="glass px-4 py-3 safe-top">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
@@ -110,7 +120,6 @@ export function ChannelsView({ onCreateChannel, onSelectChannel }: ChannelsViewP
         </div>
       </div>
 
-      {/* Channels List */}
       <div className="flex-1 overflow-y-auto px-3 py-2 pb-20">
         {filteredChannels.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center text-gray-500 py-10">
@@ -130,8 +139,8 @@ export function ChannelsView({ onCreateChannel, onSelectChannel }: ChannelsViewP
               className="flex items-center gap-3 p-3 rounded-xl active:bg-white/5 cursor-pointer transition-all mb-1"
             >
               <div className="w-12 h-12 rounded-full overflow-hidden bg-gradient-to-br from-[#2b6bff] to-[#0055ff] flex items-center justify-center flex-shrink-0">
-                {channel.avatar ? (
-                  <img src={channel.avatar} alt={channel.name} className="w-full h-full object-cover" />
+                {channel.avatar_url ? (
+                  <img src={channel.avatar_url} alt={channel.name} className="w-full h-full object-cover" />
                 ) : (
                   <FiUsers className="text-white" size={24} />
                 )}
@@ -140,15 +149,15 @@ export function ChannelsView({ onCreateChannel, onSelectChannel }: ChannelsViewP
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">
                   <h3 className="font-semibold text-white truncate text-base">{channel.name}</h3>
-                  <span className="text-xs text-gray-400 flex-shrink-0 ml-2">{channel.subscribers} подп.</span>
+                  <span className="text-xs text-gray-400 flex-shrink-0 ml-2">{channel.subscribers_count} подп.</span>
                 </div>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  {channel.isOwner ? 'Ваш канал' : `@${channel.owner_name || 'автор'}`}
+                  {channel.is_owner ? 'Ваш канал' : 'Канал'}
                 </p>
-                <p className="text-sm text-gray-400 truncate mt-1">{channel.description}</p>
+                <p className="text-sm text-gray-400 truncate mt-1">{channel.description || 'Нет описания'}</p>
               </div>
               
-              {channel.isOwner && (
+              {channel.is_owner && (
                 <div className="px-2 py-1 bg-[#2b6bff]/20 rounded-full">
                   <span className="text-xs text-[#2b6bff]">Админ</span>
                 </div>
