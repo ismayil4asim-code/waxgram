@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { FiMail, FiCheckCircle, FiArrowRight } from 'react-icons/fi'
@@ -10,12 +10,12 @@ export function EmailAuth() {
   const [step, setStep] = useState<'email' | 'code' | 'register'>('email')
   const [email, setEmail] = useState('')
   const [code, setCode] = useState('')
-  const [savedCode, setSavedCode] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [timer, setTimer] = useState(0)
   const [debugCode, setDebugCode] = useState('')
   const router = useRouter()
+  const codeRef = useRef('')
 
   const sendCode = async () => {
     if (!email) return
@@ -39,7 +39,7 @@ export function EmailAuth() {
       
       if (data.debugCode) {
         setDebugCode(data.debugCode)
-        setSavedCode(data.debugCode)
+        codeRef.current = data.debugCode
       }
 
       const interval = setInterval(() => {
@@ -70,7 +70,6 @@ export function EmailAuth() {
       const data = await res.json()
 
       if (!res.ok) {
-        // Если пользователь не найден, показываем форму регистрации с сохраненным кодом
         if (data.error === 'Требуется регистрация') {
           setStep('register')
           setLoading(false)
@@ -79,14 +78,11 @@ export function EmailAuth() {
         throw new Error(data.error)
       }
 
-      if (data.isNewUser) {
-        setStep('register')
-      } else {
-        localStorage.setItem('temp_user_id', data.userId)
-        localStorage.setItem('temp_email', data.email)
-        localStorage.setItem('temp_username', data.username)
-        router.push('/')
-      }
+      // Успешный вход
+      localStorage.setItem('temp_user_id', data.userId)
+      localStorage.setItem('temp_email', data.email)
+      localStorage.setItem('temp_username', data.username)
+      router.push('/')
     } catch (err: any) {
       setError(err.message)
     } finally {
@@ -99,28 +95,24 @@ export function EmailAuth() {
     setError('')
     
     try {
-      // Используем код, который был введен пользователем
-      const codeToUse = code || savedCode
-      
-      console.log('Registering with:', { email, code: codeToUse, ...registerData })
+      console.log('Registering with:', { email, code, ...registerData })
       
       const res = await fetch('/api/auth/verify-email-code', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           email, 
-          code: codeToUse,
-          username: registerData.username,
-          bio: registerData.bio,
-          birthDate: registerData.birthDate,
-          avatarUrl: registerData.avatarUrl
+          code,
+          ...registerData
         })
       })
 
       const data = await res.json()
       console.log('Register response:', data)
 
-      if (!res.ok) throw new Error(data.error)
+      if (!res.ok) {
+        throw new Error(data.error || 'Ошибка регистрации')
+      }
 
       localStorage.setItem('temp_user_id', data.userId)
       localStorage.setItem('temp_email', data.email)
