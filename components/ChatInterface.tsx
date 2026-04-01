@@ -203,6 +203,41 @@ export function ChatInterface({ chatId, roomId: initialRoomId, onBack, isMobile 
     }
   }
 
+  const getVerificationBadge = () => {
+    if (!profile?.verified) return null
+    
+    if (profile.verified_type === 'developer') {
+      return (
+        <img 
+          src="/image-developer-192.png" 
+          alt="Developer" 
+          className="w-4 h-4 ml-1"
+          title="Разработчик WaxGram"
+        />
+      )
+    }
+    
+    if (profile.verified_type === 'moderator') {
+      return (
+        <img 
+          src="/image-support-192.png" 
+          alt="Moderator" 
+          className="w-4 h-4 ml-1"
+          title="Модератор WaxGram"
+        />
+      )
+    }
+    
+    return (
+      <img 
+        src="/image-192.png" 
+        alt="Verified" 
+        className="w-4 h-4 ml-1"
+        title="Подтвержденный пользователь"
+      />
+    )
+  }
+
   const formatTime = (date: string) => {
     const d = new Date(date)
     return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
@@ -253,13 +288,9 @@ export function ChatInterface({ chatId, roomId: initialRoomId, onBack, isMobile 
               )}
             </div>
             <div className="text-left">
-              <div className="flex items-center gap-1">
+              <div className="flex items-center">
                 <h1 className="font-semibold text-white">{profile?.username || 'Пользователь'}</h1>
-                {profile?.verified && (
-                  <span className={`text-xs ${profile.verified_type === 'developer' ? 'text-purple-400' : 'text-[#2b6bff]'}`}>
-                    {profile.verified_type === 'developer' ? '⚡' : '✓'}
-                  </span>
-                )}
+                {getVerificationBadge()}
               </div>
               <p className="text-xs text-gray-400">
                 {profile?.online ? 'в сети' : profile?.last_seen ? `был(а) ${new Date(profile.last_seen).toLocaleTimeString()}` : 'не в сети'}
