@@ -69,6 +69,17 @@ export function CreateChannelModal({ isOpen, onClose, onCreate }: CreateChannelM
         throw new Error('Пользователь не авторизован')
       }
       
+      // Проверяем, есть ли уже канал у пользователя
+      const { data: existingChannel, error: checkError } = await supabase
+        .from('channels')
+        .select('id, name')
+        .eq('owner_id', currentUserId)
+        .maybeSingle()
+      
+      if (existingChannel) {
+        throw new Error(`Вы уже создали канал "${existingChannel.name}". Можно создать только один канал`)
+      }
+      
       let avatarUrl = null
       
       // Загружаем аватар если есть
@@ -83,6 +94,8 @@ export function CreateChannelModal({ isOpen, onClose, onCreate }: CreateChannelM
             .from('channel-avatars')
             .getPublicUrl(data.path)
           avatarUrl = publicUrl
+        } else if (uploadError) {
+          console.error('Avatar upload error:', uploadError)
         }
       }
       
@@ -99,7 +112,12 @@ export function CreateChannelModal({ isOpen, onClose, onCreate }: CreateChannelM
         .select()
         .single()
       
-      if (createError) throw createError
+      if (createError) {
+        if (createError.code === '23505') {
+          throw new Error('Канал с таким названием уже существует')
+        }
+        throw createError
+      }
       
       // Добавляем создателя как подписчика
       await supabase
@@ -127,7 +145,10 @@ export function CreateChannelModal({ isOpen, onClose, onCreate }: CreateChannelM
     <AnimatePresence>
       {isOpen && (
         <>
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100]" onClick={onClose} />
+          <div 
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100]" 
+            onClick={onClose} 
+          />
           <div className="fixed inset-0 flex items-center justify-center z-[101] p-4">
             <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
@@ -137,13 +158,18 @@ export function CreateChannelModal({ isOpen, onClose, onCreate }: CreateChannelM
               className="w-full max-w-md"
             >
               <div className="bg-[#1a1a2e] rounded-2xl shadow-2xl overflow-hidden border border-white/10">
+                {/* Заголовок */}
                 <div className="flex items-center justify-between p-4 border-b border-white/10">
                   <h2 className="text-lg font-semibold text-white">Создать канал</h2>
-                  <button onClick={onClose} className="p-1 hover:bg-white/10 rounded-full transition-colors">
+                  <button 
+                    onClick={onClose} 
+                    className="p-1 hover:bg-white/10 rounded-full transition-colors"
+                  >
                     <FiX className="text-gray-400" size={20} />
                   </button>
                 </div>
                 
+                {/* Контент */}
                 <div className="p-4">
                   {/* Avatar */}
                   <div className="flex justify-center mb-4">
@@ -161,36 +187,59 @@ export function CreateChannelModal({ isOpen, onClose, onCreate }: CreateChannelM
                         ) : (
                           <FiUpload size={12} className="text-white" />
                         )}
-                        <input type="file" accept="image/*" onChange={handleAvatarUpload} className="hidden" />
+                        <input 
+                          type="file" 
+                          accept="image/*" 
+                          onChange={handleAvatarUpload} 
+                          className="hidden" 
+                        />
                       </label>
                     </div>
                   </div>
                   
+                  {/* Форма */}
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-sm text-gray-400 mb-2">Название канала *</label>
+                      <label className="block text-sm text-gray-400 mb-2">
+                        Название канала *
+                      </label>
                       <input
                         type="text"
                         value={name}
-                        onChange={(e) => setName(e.target.value)}
+                        onChange={(e) => {
+                          setName(e.target.value)
+                          setError('')
+                        }}
                         placeholder="Введите название"
                         className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:border-[#2b6bff] text-white"
+                        maxLength={50}
                       />
+                      <p className="text-xs text-gray-500 mt-1">
+                        {name.length}/50 символов
+                      </p>
                     </div>
                     
                     <div>
-                      <label className="block text-sm text-gray-400 mb-2">Описание</label>
+                      <label className="block text-sm text-gray-400 mb-2">
+                        Описание
+                      </label>
                       <textarea
                         value={description}
                         onChange={(e) => setDescription(e.target.value)}
                         placeholder="Расскажите о канале"
                         rows={3}
                         className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:border-[#2b6bff] text-white resize-none"
+                        maxLength={200}
                       />
+                      <p className="text-xs text-gray-500 mt-1">
+                        {description.length}/200 символов
+                      </p>
                     </div>
                     
                     {error && (
-                      <p className="text-red-400 text-sm text-center">{error}</p>
+                      <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl">
+                        <p className="text-red-400 text-sm text-center">{error}</p>
+                      </div>
                     )}
                     
                     <button
@@ -198,7 +247,14 @@ export function CreateChannelModal({ isOpen, onClose, onCreate }: CreateChannelM
                       disabled={loading || !name.trim()}
                       className="w-full py-2.5 bg-gradient-to-r from-[#2b6bff] to-[#0055ff] rounded-xl font-medium hover:opacity-90 disabled:opacity-50 transition-all"
                     >
-                      {loading ? <FiLoader className="animate-spin mx-auto" size={20} /> : 'Создать канал'}
+                      {loading ? (
+                        <div className="flex items-center justify-center gap-2">
+                          <FiLoader className="animate-spin" size={18} />
+                          <span>Создание...</span>
+                        </div>
+                      ) : (
+                        'Создать канал'
+                      )}
                     </button>
                   </div>
                 </div>
