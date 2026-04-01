@@ -21,7 +21,6 @@ export function ProfileView({ onLogout }: ProfileViewProps) {
   const [loading, setLoading] = useState(true)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Загружаем данные из Supabase
   useEffect(() => {
     const loadProfile = async () => {
       const userId = localStorage.getItem('temp_user_id')
@@ -30,7 +29,6 @@ export function ProfileView({ onLogout }: ProfileViewProps) {
       if (!userId) return
       
       try {
-        // Загружаем из базы данных
         const { data, error } = await supabase
           .from('profiles')
           .select('*')
@@ -38,8 +36,6 @@ export function ProfileView({ onLogout }: ProfileViewProps) {
           .single()
         
         if (error) {
-          console.error('Load profile error:', error)
-          // Если ошибка, используем localStorage как запасной вариант
           const savedUsername = localStorage.getItem('temp_username')
           const savedAvatar = localStorage.getItem('user_avatar')
           const savedBio = localStorage.getItem('user_bio')
@@ -51,7 +47,9 @@ export function ProfileView({ onLogout }: ProfileViewProps) {
             bio: savedBio || '',
             avatar_url: savedAvatar || null,
             birth_date: '',
-            created_at: new Date().toISOString()
+            created_at: new Date().toISOString(),
+            verified: false,
+            verified_type: null
           })
           setUsername(savedUsername || 'Пользователь')
           setBio(savedBio || '')
@@ -63,7 +61,6 @@ export function ProfileView({ onLogout }: ProfileViewProps) {
           setAvatar(data.avatar_url)
           setBirthDate(data.birth_date || '')
           
-          // Обновляем localStorage
           localStorage.setItem('temp_username', data.username)
           if (data.avatar_url) localStorage.setItem('user_avatar', data.avatar_url)
           if (data.bio) localStorage.setItem('user_bio', data.bio)
@@ -78,6 +75,35 @@ export function ProfileView({ onLogout }: ProfileViewProps) {
     loadProfile()
   }, [])
 
+  const getVerifiedBadge = () => {
+    if (!user?.verified) return null
+    
+    if (user.verified_type === 'developer') {
+      return (
+        <div className="flex items-center gap-1 px-2 py-0.5 bg-purple-500/20 rounded-full">
+          <img src="/image-developer-192.png" alt="Developer" className="w-4 h-4" />
+          <span className="text-purple-400 text-xs">Разработчик</span>
+        </div>
+      )
+    }
+    
+    if (user.verified_type === 'moderator') {
+      return (
+        <div className="flex items-center gap-1 px-2 py-0.5 bg-green-500/20 rounded-full">
+          <img src="/image-support-192.png" alt="Moderator" className="w-4 h-4" />
+          <span className="text-green-400 text-xs">Модератор</span>
+        </div>
+      )
+    }
+    
+    return (
+      <div className="flex items-center gap-1 px-2 py-0.5 bg-[#2b6bff]/20 rounded-full">
+        <img src="/image-192.png" alt="Verified" className="w-4 h-4" />
+        <span className="text-[#2b6bff] text-xs">Подтвержден</span>
+      </div>
+    )
+  }
+
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -85,22 +111,18 @@ export function ProfileView({ onLogout }: ProfileViewProps) {
     setUploading(true)
     
     try {
-      // Конвертируем в base64
       const reader = new FileReader()
       reader.onloadend = async () => {
         const base64 = reader.result as string
         setAvatar(base64)
         
-        // Сохраняем в базу
         if (user?.id) {
           const { error } = await supabase
             .from('profiles')
             .update({ avatar_url: base64 })
             .eq('id', user.id)
           
-          if (error) {
-            console.error('Update avatar error:', error)
-          } else {
+          if (!error) {
             localStorage.setItem('user_avatar', base64)
           }
         }
@@ -132,10 +154,7 @@ export function ProfileView({ onLogout }: ProfileViewProps) {
         .update(updates)
         .eq('id', user.id)
       
-      if (error) {
-        console.error('Update error:', error)
-      } else {
-        // Обновляем localStorage
+      if (!error) {
         localStorage.setItem('temp_username', username)
         localStorage.setItem('user_bio', bio)
         if (avatar) localStorage.setItem('user_avatar', avatar)
@@ -190,7 +209,6 @@ export function ProfileView({ onLogout }: ProfileViewProps) {
             )}
           </div>
 
-          {/* Avatar */}
           <div className="flex justify-center">
             <div className="relative">
               <div className="w-32 h-32 rounded-full overflow-hidden bg-gradient-to-br from-[#2b6bff] to-[#0055ff] flex items-center justify-center">
@@ -227,7 +245,6 @@ export function ProfileView({ onLogout }: ProfileViewProps) {
             </div>
           </div>
 
-          {/* Profile Info */}
           <div className="glass-card p-6 space-y-4">
             {isEditing ? (
               <>
@@ -297,12 +314,15 @@ export function ProfileView({ onLogout }: ProfileViewProps) {
               </>
             ) : (
               <>
-                <div className="flex items-center gap-3 py-2">
-                  <FiUser className="text-gray-400" size={20} />
-                  <div>
-                    <p className="text-sm text-gray-400">Имя пользователя</p>
-                    <p className="text-white font-medium">@{username}</p>
+                <div className="flex items-center justify-between py-2">
+                  <div className="flex items-center gap-3">
+                    <FiUser className="text-gray-400" size={20} />
+                    <div>
+                      <p className="text-sm text-gray-400">Имя пользователя</p>
+                      <p className="text-white font-medium">@{username}</p>
+                    </div>
                   </div>
+                  {getVerifiedBadge()}
                 </div>
                 <div className="flex items-center gap-3 py-2">
                   <FiMail className="text-gray-400" size={20} />
