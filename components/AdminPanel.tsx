@@ -1,13 +1,23 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase/client'
 import { motion } from 'framer-motion'
-import { FiShield, FiSearch, FiCheck, FiX } from 'react-icons/fi'
+import { FiShield, FiSearch, FiCheck, FiX, FiUser, FiStar } from 'react-icons/fi'
+import { supabase } from '@/lib/supabase/client'
 import { Toast } from './Toast'
 
+interface User {
+  id: string
+  username: string
+  email: string
+  avatar_url: string | null
+  verified: boolean
+  verified_type: string | null
+  created_at: string
+}
+
 export function AdminPanel() {
-  const [users, setUsers] = useState<any[]>([])
+  const [users, setUsers] = useState<User[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(true)
   const [toast, setToast] = useState({ show: false, message: '', type: 'info' as 'success' | 'error' | 'info' })
@@ -27,7 +37,6 @@ export function AdminPanel() {
         .eq('id', userId)
         .single()
       
-      // Только разработчики могут выдавать галочки
       if (user?.verified_type !== 'developer') {
         showToast('У вас нет прав администратора', 'error')
         return
@@ -66,15 +75,19 @@ export function AdminPanel() {
       if (error) throw error
       
       // Отправляем уведомление пользователю
+      const user = users.find(u => u.id === userId)
+      const notificationTitle = verified ? 'Поздравляем! 🎉' : 'Верификация снята'
+      const notificationContent = verified 
+        ? `Вы получили галочку ${verifiedType === 'developer' ? 'разработчика' : verifiedType === 'popular' ? 'популярного автора' : 'модератора'}!`
+        : 'Ваша верификация была снята'
+      
       await supabase
         .from('notifications')
         .insert({
           user_id: userId,
-          type: 'verified',
-          title: verified ? 'Поздравляем! 🎉' : 'Верификация снята',
-          content: verified 
-            ? `Вы получили галочку ${verifiedType === 'developer' ? 'разработчика' : verifiedType === 'popular' ? 'популярного автора' : 'модератора'}!`
-            : 'Ваша верификация была снята',
+          type: verified ? 'verified' : 'unverified',
+          title: notificationTitle,
+          content: notificationContent,
           data: { verified_type: verifiedType }
         })
       
@@ -88,13 +101,13 @@ export function AdminPanel() {
 
   const getVerifiedBadge = (type: string | null) => {
     if (type === 'developer') {
-      return { icon: '⚡', color: 'purple', label: 'Разработчик' }
+      return { icon: '⚡', color: 'text-purple-400', label: 'Разработчик' }
     }
     if (type === 'popular') {
-      return { icon: '✓', color: 'blue', label: 'Популярный автор' }
+      return { icon: '✓', color: 'text-[#2b6bff]', label: 'Популярный автор' }
     }
     if (type === 'moderator') {
-      return { icon: '🛡️', color: 'green', label: 'Модератор' }
+      return { icon: '🛡️', color: 'text-green-400', label: 'Модератор' }
     }
     return null
   }
@@ -147,7 +160,7 @@ export function AdminPanel() {
                     className="bg-white/5 rounded-xl p-3 border border-white/10"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full overflow-hidden bg-gradient-to-br from-[#2b6bff] to-[#0055ff]">
+                      <div className="w-10 h-10 rounded-full overflow-hidden bg-gradient-to-br from-[#2b6bff] to-[#0055ff] flex items-center justify-center">
                         {user.avatar_url ? (
                           <img src={user.avatar_url} alt={user.username} className="w-full h-full object-cover" />
                         ) : (
@@ -157,10 +170,10 @@ export function AdminPanel() {
                         )}
                       </div>
                       <div className="flex-1">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-medium text-white">@{user.username}</span>
                           {user.verified && badge && (
-                            <span className={`text-xs text-${badge.color}-400`}>
+                            <span className={`text-xs ${badge.color}`}>
                               {badge.icon} {badge.label}
                             </span>
                           )}
@@ -168,7 +181,6 @@ export function AdminPanel() {
                         <p className="text-xs text-gray-400">{user.email}</p>
                       </div>
                       
-                      {/* Кнопки выдачи галочек */}
                       <div className="flex gap-1">
                         <button
                           onClick={() => updateVerification(user.id, true, 'developer')}
@@ -190,18 +202,7 @@ export function AdminPanel() {
                           }`}
                           title="Выдать галочку популярного автора"
                         >
-                          ✓
-                        </button>
-                        <button
-                          onClick={() => updateVerification(user.id, true, 'moderator')}
-                          className={`p-1.5 rounded-lg transition-colors ${
-                            user.verified && user.verified_type === 'moderator'
-                              ? 'bg-green-500/20 text-green-400'
-                              : 'hover:bg-white/10 text-gray-400'
-                          }`}
-                          title="Выдать галочку модератора"
-                        >
-                          🛡️
+                          <FiStar size={14} />
                         </button>
                         {user.verified && (
                           <button
