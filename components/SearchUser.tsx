@@ -3,13 +3,14 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { FiSearch, FiUserPlus, FiX, FiUser } from 'react-icons/fi'
+import { supabase } from '@/lib/supabase/client'
 import { Toast } from './Toast'
 
 interface User {
   id: string
   username: string
-  phone: string
-  avatar: string | null
+  email: string
+  avatar_url: string | null
   bio: string
 }
 
@@ -34,37 +35,32 @@ export function SearchUser({ onAddContact }: SearchUserProps) {
     
     setLoading(true)
     
-    // Имитация поиска пользователей
-    setTimeout(() => {
-      // Демо пользователи
-      const users: User[] = [
-        {
-          id: '1',
-          username: 'vaksek',
-          phone: '+7 927 101-03-60',
-          avatar: 'https://i.ibb.co/zThS1F2P/photo-2026-03-29-10-46-46.jpg',
-          bio: 'Тестовый пользователь'
-        },
-        {
-          id: '2',
-          username: 'waxTG_support',
-          phone: '+7 800 123-45-67',
-          avatar: 'https://i.ibb.co/dsywjJ5Y/W.png',
-          bio: 'Официальная поддержка WaxTG'
-        }
-      ]
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, username, email, avatar_url, bio')
+        .ilike('username', `%${searchQuery}%`)
+        .limit(10)
       
-      const filtered = users.filter(user =>
-        user.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        user.phone.includes(searchQuery)
-      )
+      if (error) throw error
       
-      setSearchResults(filtered)
+      setSearchResults(data || [])
+    } catch (error) {
+      console.error('Search error:', error)
+      showToast('Ошибка поиска', 'error')
+    } finally {
       setLoading(false)
-    }, 500)
+    }
   }
 
-  const handleAddContact = (user: User) => {
+  const handleAddContact = async (user: User) => {
+    // Проверяем что не добавляем себя
+    const currentUserId = localStorage.getItem('temp_user_id')
+    if (currentUserId === user.id) {
+      showToast('Нельзя добавить самого себя', 'error')
+      return
+    }
+    
     onAddContact(user)
     showToast(`${user.username} добавлен в контакты`, 'success')
     setSearchQuery('')
@@ -116,7 +112,7 @@ export function SearchUser({ onAddContact }: SearchUserProps) {
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                      placeholder="Введите username или телефон..."
+                      placeholder="Введите username..."
                       className="w-full pl-10 pr-4 py-2 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:border-[#2b6bff] text-white"
                     />
                   </div>
@@ -139,15 +135,15 @@ export function SearchUser({ onAddContact }: SearchUserProps) {
                     >
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full overflow-hidden bg-gradient-to-br from-[#2b6bff] to-[#0055ff] flex items-center justify-center">
-                          {user.avatar ? (
-                            <img src={user.avatar} alt={user.username} className="w-full h-full object-cover" />
+                          {user.avatar_url ? (
+                            <img src={user.avatar_url} alt={user.username} className="w-full h-full object-cover" />
                           ) : (
                             <FiUser className="text-white" size={20} />
                           )}
                         </div>
                         <div>
                           <h3 className="font-medium text-white">@{user.username}</h3>
-                          <p className="text-xs text-gray-400">{user.phone}</p>
+                          <p className="text-xs text-gray-400">{user.email}</p>
                           <p className="text-xs text-gray-500">{user.bio}</p>
                         </div>
                       </div>
