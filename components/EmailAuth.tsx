@@ -10,11 +10,11 @@ export function EmailAuth() {
   const [step, setStep] = useState<'email' | 'code' | 'register'>('email')
   const [email, setEmail] = useState('')
   const [code, setCode] = useState('')
+  const [savedCode, setSavedCode] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [timer, setTimer] = useState(0)
   const [debugCode, setDebugCode] = useState('')
-  const [showRegister, setShowRegister] = useState(false)
   const router = useRouter()
 
   const sendCode = async () => {
@@ -39,6 +39,7 @@ export function EmailAuth() {
       
       if (data.debugCode) {
         setDebugCode(data.debugCode)
+        setSavedCode(data.debugCode)
       }
 
       const interval = setInterval(() => {
@@ -69,10 +70,9 @@ export function EmailAuth() {
       const data = await res.json()
 
       if (!res.ok) {
-        // Если пользователь не найден, показываем форму регистрации
+        // Если пользователь не найден, показываем форму регистрации с сохраненным кодом
         if (data.error === 'Требуется регистрация') {
           setStep('register')
-          setShowRegister(true)
           setLoading(false)
           return
         }
@@ -81,7 +81,6 @@ export function EmailAuth() {
 
       if (data.isNewUser) {
         setStep('register')
-        setShowRegister(true)
       } else {
         localStorage.setItem('temp_user_id', data.userId)
         localStorage.setItem('temp_email', data.email)
@@ -97,19 +96,29 @@ export function EmailAuth() {
 
   const handleRegister = async (registerData: { username: string; bio: string; birthDate: string; avatarUrl: string | null }) => {
     setLoading(true)
+    setError('')
     
     try {
+      // Используем код, который был введен пользователем
+      const codeToUse = code || savedCode
+      
+      console.log('Registering with:', { email, code: codeToUse, ...registerData })
+      
       const res = await fetch('/api/auth/verify-email-code', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           email, 
-          code, 
-          ...registerData 
+          code: codeToUse,
+          username: registerData.username,
+          bio: registerData.bio,
+          birthDate: registerData.birthDate,
+          avatarUrl: registerData.avatarUrl
         })
       })
 
       const data = await res.json()
+      console.log('Register response:', data)
 
       if (!res.ok) throw new Error(data.error)
 
@@ -123,6 +132,7 @@ export function EmailAuth() {
       
       router.push('/')
     } catch (err: any) {
+      console.error('Register error:', err)
       setError(err.message)
       setLoading(false)
     }
