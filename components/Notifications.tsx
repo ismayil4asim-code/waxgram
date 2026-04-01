@@ -2,98 +2,125 @@
 
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { FiBell, FiBellOff, FiCheck, FiX } from 'react-icons/fi'
-import { requestNotificationPermission, showNotification } from '@/lib/notifications'
+import { FiBell, FiBellOff, FiCheck, FiX, FiUser, FiStar, FiShield } from 'react-icons/fi'
+import { supabase } from '@/lib/supabase/client'
 
-interface NotificationItem {
+interface Notification {
   id: string
+  type: string
   title: string
-  body: string
+  content: string
   read: boolean
-  createdAt: Date
-  onClick?: () => void
+  data: any
+  created_at: string
 }
 
 export function Notifications() {
-  const [notifications, setNotifications] = useState<NotificationItem[]>([])
+  const [notifications, setNotifications] = useState<Notification[]>([])
   const [isOpen, setIsOpen] = useState(false)
-  const [permission, setPermission] = useState<NotificationPermission>('default')
   const [unreadCount, setUnreadCount] = useState(0)
+  const [userId, setUserId] = useState<string | null>(null)
 
   useEffect(() => {
-    if ('Notification' in window) {
-      setPermission(Notification.permission)
+    const loadNotifications = async () => {
+      const tempUserId = localStorage.getItem('temp_user_id')
+      if (!tempUserId) return
+      setUserId(tempUserId)
+      
+      const { data } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('user_id', tempUserId)
+        .order('created_at', { ascending: false })
+        .limit(50)
+      
+      if (data) {
+        setNotifications(data)
+        setUnreadCount(data.filter(n => !n.read).length)
+      }
     }
-  }, [])
-
-  const handleRequestPermission = async () => {
-    const granted = await requestNotificationPermission()
-    setPermission(granted ? 'granted' : 'denied')
-  }
-
-  const addNotification = (title: string, body: string, onClick?: () => void) => {
-    const newNotification: NotificationItem = {
-      id: Date.now().toString(),
-      title,
-      body,
-      read: false,
-      createdAt: new Date(),
-      onClick,
+    
+    loadNotifications()
+    
+    const subscription = supabase
+      .channel('notifications')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'notifications',
+        filter: `user_id=eq.${userId}`
+      }, (payload) => {
+        const newNotif = payload.new as Notification
+        setNotifications(prev => [newNotif, ...prev])
+        setUnreadCount(prev => prev + 1)
+      })
+      .subscribe()
+    
+    return () => {
+      subscription.unsubscribe()
     }
+  }, [userId])
 
-    setNotifications(prev => [newNotification, ...prev])
-    setUnreadCount(prev => prev + 1)
-
-    // Показываем системное уведомление
-    showNotification(title, body, undefined, onClick)
-  }
-
-  const markAsRead = (id: string) => {
-    setNotifications(prev =>
-      prev.map(n => (n.id === id ? { ...n, read: true } : n))
-    )
+  const markAsRead = async (id: string) => {
+    await supabase
+      .from('notifications')
+      .update({ read: true })
+      .eq('id', id)
+    
+    setNotifications(prev => prev.map(n => 
+      n.id === id ? { ...n, read: true } : n
+    ))
     setUnreadCount(prev => Math.max(0, prev - 1))
   }
 
-  const markAllAsRead = () => {
-    setNotifications(prev =>
-      prev.map(n => ({ ...n, read: true }))
-    )
+  const markAllAsRead = async () => {
+    if (!userId) return
+    
+    await supabase
+      .from('notifications')
+      .update({ read: true })
+      .eq('user_id', userId)
+      .eq('read', false)
+    
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })))
     setUnreadCount(0)
   }
 
-  const clearAll = () => {
-    setNotifications([])
-    setUnreadCount(0)
+  const getIcon = (type: string) => {
+    switch (type) {
+      case 'verified':
+        return <FiShield className="text-[#2b6bff]" size={18} />
+      case 'developer':
+        return <FiStar className="text-purple-400" size={18} />
+      case 'popular':
+        return <FiStar className="text-[#2b6bff]" size={18} />
+      default:
+        return <FiUser className="text-gray-400" size={18} />
+    }
   }
 
   return (
     <div className="relative">
-      {/* Кнопка уведомлений */}
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="relative p-2 hover:bg-white/10 rounded-full transition-colors"
       >
-        {permission === 'granted' ? (
-          <FiBell className="text-gray-400" size={20} />
+        {unreadCount > 0 ? (
+          <>
+            <FiBell className="text-[#2b6bff]" size={20} />
+            <span className="absolute top-0 right-0 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
+              {unreadCount > 9 ? '9+' : unreadCount}
+            </span>
+          </>
         ) : (
-          <FiBellOff className="text-gray-400" size={20} />
-        )}
-        {unreadCount > 0 && (
-          <span className="absolute top-0 right-0 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
-            {unreadCount}
-          </span>
+          <FiBell className="text-gray-400" size={20} />
         )}
       </button>
 
-      {/* Выпадающее меню уведомлений */}
       <AnimatePresence>
         {isOpen && (
           <>
-            <div
-              className="fixed inset-0 z-40"
-              onClick={() => setIsOpen(false)}
-            />
+            <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
             <motion.div
               initial={{ opacity: 0, y: -10, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -102,65 +129,48 @@ export function Notifications() {
             >
               <div className="p-3 border-b border-white/10 flex items-center justify-between">
                 <h3 className="font-semibold text-white">Уведомления</h3>
-                {permission !== 'granted' && (
+                {notifications.length > 0 && (
                   <button
-                    onClick={handleRequestPermission}
+                    onClick={markAllAsRead}
                     className="text-xs text-[#2b6bff] hover:underline"
                   >
-                    Включить
+                    Прочитать все
                   </button>
-                )}
-                {notifications.length > 0 && (
-                  <div className="flex gap-2">
-                    <button
-                      onClick={markAllAsRead}
-                      className="text-xs text-gray-400 hover:text-white"
-                    >
-                      Все прочитаны
-                    </button>
-                    <button
-                      onClick={clearAll}
-                      className="text-xs text-gray-400 hover:text-white"
-                    >
-                      Очистить
-                    </button>
-                  </div>
                 )}
               </div>
 
               <div className="max-h-96 overflow-y-auto">
                 {notifications.length === 0 ? (
                   <div className="p-8 text-center text-gray-400">
-                    <FiBell className="mx-auto mb-2" size={32} />
+                    <FiBellOff className="mx-auto mb-2" size={32} />
                     <p className="text-sm">Нет уведомлений</p>
                   </div>
                 ) : (
                   notifications.map((notification) => (
                     <div
                       key={notification.id}
-                      onClick={() => {
-                        markAsRead(notification.id)
-                        notification.onClick?.()
-                        setIsOpen(false)
-                      }}
+                      onClick={() => markAsRead(notification.id)}
                       className={`p-3 border-b border-white/10 cursor-pointer transition-colors ${
                         !notification.read ? 'bg-[#2b6bff]/10' : 'hover:bg-white/5'
                       }`}
                     >
                       <div className="flex items-start gap-3">
+                        <div className="mt-1">
+                          {getIcon(notification.type)}
+                        </div>
                         <div className="flex-1">
                           <h4 className="text-sm font-medium text-white">
                             {notification.title}
                           </h4>
                           <p className="text-xs text-gray-400 mt-1">
-                            {notification.body}
+                            {notification.content}
                           </p>
                           <p className="text-xs text-gray-500 mt-1">
-                            {new Date(notification.createdAt).toLocaleTimeString()}
+                            {new Date(notification.created_at).toLocaleString()}
                           </p>
                         </div>
                         {!notification.read && (
-                          <div className="w-2 h-2 bg-[#2b6bff] rounded-full mt-1" />
+                          <div className="w-2 h-2 bg-[#2b6bff] rounded-full mt-2" />
                         )}
                       </div>
                     </div>
