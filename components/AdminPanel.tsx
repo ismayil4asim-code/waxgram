@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { FiShield, FiSearch, FiCheck, FiX, FiUser, FiStar } from 'react-icons/fi'
+import { FiShield, FiSearch, FiCheck, FiX, FiUser, FiStar, FiUsers, FiMessageSquare, FiHash, FiTrendingUp } from 'react-icons/fi'
 import { supabase } from '@/lib/supabase/client'
 import { Toast } from './Toast'
 
@@ -16,10 +16,27 @@ interface User {
   created_at: string
 }
 
+interface Stats {
+  totalUsers: number
+  verifiedUsers: number
+  totalChannels: number
+  totalMessages: number
+  totalPosts: number
+  activeToday: number
+}
+
 export function AdminPanel() {
   const [users, setUsers] = useState<User[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(true)
+  const [stats, setStats] = useState<Stats>({
+    totalUsers: 0,
+    verifiedUsers: 0,
+    totalChannels: 0,
+    totalMessages: 0,
+    totalPosts: 0,
+    activeToday: 0
+  })
   const [toast, setToast] = useState({ show: false, message: '', type: 'info' as 'success' | 'error' | 'info' })
   const [currentUser, setCurrentUser] = useState<any>(null)
 
@@ -43,11 +60,61 @@ export function AdminPanel() {
       }
       
       setCurrentUser(user)
+      loadStats()
       loadUsers()
     }
     
     checkAdmin()
   }, [])
+
+  const loadStats = async () => {
+    try {
+      // Общее количество пользователей
+      const { count: usersCount } = await supabase
+        .from('profiles')
+        .select('*', { count: 'exact', head: true })
+      
+      // Количество верифицированных
+      const { count: verifiedCount } = await supabase
+        .from('profiles')
+        .select('*', { count: 'exact', head: true })
+        .eq('verified', true)
+      
+      // Количество каналов
+      const { count: channelsCount } = await supabase
+        .from('channels')
+        .select('*', { count: 'exact', head: true })
+      
+      // Количество сообщений
+      const { count: messagesCount } = await supabase
+        .from('messages')
+        .select('*', { count: 'exact', head: true })
+      
+      // Количество постов в каналах
+      const { count: postsCount } = await supabase
+        .from('channel_posts')
+        .select('*', { count: 'exact', head: true })
+      
+      // Активные сегодня (пользователи, которые были онлайн сегодня)
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      const { count: activeCount } = await supabase
+        .from('profiles')
+        .select('*', { count: 'exact', head: true })
+        .gte('last_seen', today.toISOString())
+      
+      setStats({
+        totalUsers: usersCount || 0,
+        verifiedUsers: verifiedCount || 0,
+        totalChannels: channelsCount || 0,
+        totalMessages: messagesCount || 0,
+        totalPosts: postsCount || 0,
+        activeToday: activeCount || 0
+      })
+    } catch (error) {
+      console.error('Load stats error:', error)
+    }
+  }
 
   const loadUsers = async () => {
     setLoading(true)
@@ -74,12 +141,21 @@ export function AdminPanel() {
       
       if (error) throw error
       
-      // Отправляем уведомление пользователю
       const user = users.find(u => u.id === userId)
       const notificationTitle = verified ? 'Поздравляем! 🎉' : 'Верификация снята'
-      const notificationContent = verified 
-        ? `Вы получили галочку ${verifiedType === 'developer' ? 'разработчика' : verifiedType === 'popular' ? 'популярного автора' : 'модератора'}!`
-        : 'Ваша верификация была снята'
+      let notificationContent = ''
+      
+      if (verified) {
+        if (verifiedType === 'developer') {
+          notificationContent = 'Вы получили галочку разработчика! ⚡'
+        } else if (verifiedType === 'popular') {
+          notificationContent = 'Вы получили галочку популярного автора! ✓'
+        } else if (verifiedType === 'moderator') {
+          notificationContent = 'Вы получили галочку модератора! 🛡️'
+        }
+      } else {
+        notificationContent = 'Ваша верификация была снята'
+      }
       
       await supabase
         .from('notifications')
@@ -92,6 +168,7 @@ export function AdminPanel() {
         })
       
       showToast(`Пользователь ${verified ? 'верифицирован' : 'деверифицирован'}`, 'success')
+      loadStats()
       loadUsers()
     } catch (error) {
       console.error('Update error:', error)
@@ -101,13 +178,13 @@ export function AdminPanel() {
 
   const getVerifiedBadge = (type: string | null) => {
     if (type === 'developer') {
-      return { icon: '⚡', color: 'text-purple-400', label: 'Разработчик' }
+      return { icon: '⚡', color: 'text-purple-400', label: 'Разработчик', bg: 'bg-purple-500/20' }
     }
     if (type === 'popular') {
-      return { icon: '✓', color: 'text-[#2b6bff]', label: 'Популярный автор' }
+      return { icon: '✓', color: 'text-[#2b6bff]', label: 'Популярный автор', bg: 'bg-[#2b6bff]/20' }
     }
     if (type === 'moderator') {
-      return { icon: '🛡️', color: 'text-green-400', label: 'Модератор' }
+      return { icon: '🛡️', color: 'text-green-400', label: 'Модератор', bg: 'bg-green-500/20' }
     }
     return null
   }
@@ -123,9 +200,58 @@ export function AdminPanel() {
   return (
     <div className="h-full flex flex-col">
       <div className="glass px-4 py-3">
-        <div className="flex items-center gap-3 mb-3">
-          <FiShield className="text-purple-400" size={24} />
-          <h1 className="text-xl font-bold text-white">Панель администратора</h1>
+        <div className="flex items-center gap-3 mb-4">
+          <FiShield className="text-purple-400" size={28} />
+          <div>
+            <h1 className="text-xl font-bold text-white">Панель администратора</h1>
+            <p className="text-xs text-gray-400">Управление пользователями и галочками</p>
+          </div>
+        </div>
+        
+        {/* Статистика */}
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
+          <div className="bg-white/5 rounded-xl p-3">
+            <div className="flex items-center gap-2 mb-1">
+              <FiUsers className="text-[#2b6bff]" size={14} />
+              <span className="text-xs text-gray-400">Всего пользователей</span>
+            </div>
+            <p className="text-2xl font-bold text-white">{stats.totalUsers}</p>
+          </div>
+          <div className="bg-white/5 rounded-xl p-3">
+            <div className="flex items-center gap-2 mb-1">
+              <FiCheck className="text-green-400" size={14} />
+              <span className="text-xs text-gray-400">Верифицированы</span>
+            </div>
+            <p className="text-2xl font-bold text-white">{stats.verifiedUsers}</p>
+          </div>
+          <div className="bg-white/5 rounded-xl p-3">
+            <div className="flex items-center gap-2 mb-1">
+              <FiHash className="text-purple-400" size={14} />
+              <span className="text-xs text-gray-400">Каналов</span>
+            </div>
+            <p className="text-2xl font-bold text-white">{stats.totalChannels}</p>
+          </div>
+          <div className="bg-white/5 rounded-xl p-3">
+            <div className="flex items-center gap-2 mb-1">
+              <FiMessageSquare className="text-blue-400" size={14} />
+              <span className="text-xs text-gray-400">Сообщений</span>
+            </div>
+            <p className="text-2xl font-bold text-white">{stats.totalMessages}</p>
+          </div>
+          <div className="bg-white/5 rounded-xl p-3">
+            <div className="flex items-center gap-2 mb-1">
+              <FiTrendingUp className="text-yellow-400" size={14} />
+              <span className="text-xs text-gray-400">Постов в каналах</span>
+            </div>
+            <p className="text-2xl font-bold text-white">{stats.totalPosts}</p>
+          </div>
+          <div className="bg-white/5 rounded-xl p-3">
+            <div className="flex items-center gap-2 mb-1">
+              <FiUser className="text-green-400" size={14} />
+              <span className="text-xs text-gray-400">Активны сегодня</span>
+            </div>
+            <p className="text-2xl font-bold text-white">{stats.activeToday}</p>
+          </div>
         </div>
         
         <div className="relative">
@@ -173,12 +299,15 @@ export function AdminPanel() {
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-medium text-white">@{user.username}</span>
                           {user.verified && badge && (
-                            <span className={`text-xs ${badge.color}`}>
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${badge.bg} ${badge.color}`}>
                               {badge.icon} {badge.label}
                             </span>
                           )}
                         </div>
                         <p className="text-xs text-gray-400">{user.email}</p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Регистрация: {new Date(user.created_at).toLocaleDateString()}
+                        </p>
                       </div>
                       
                       <div className="flex gap-1">
@@ -203,6 +332,17 @@ export function AdminPanel() {
                           title="Выдать галочку популярного автора"
                         >
                           <FiStar size={14} />
+                        </button>
+                        <button
+                          onClick={() => updateVerification(user.id, true, 'moderator')}
+                          className={`p-1.5 rounded-lg transition-colors ${
+                            user.verified && user.verified_type === 'moderator'
+                              ? 'bg-green-500/20 text-green-400'
+                              : 'hover:bg-white/10 text-gray-400'
+                          }`}
+                          title="Выдать галочку модератора"
+                        >
+                          🛡️
                         </button>
                         {user.verified && (
                           <button
