@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { FiArrowLeft, FiMoreVertical, FiUsers, FiShare2, FiBell, FiUser, FiLoader, FiSend, FiHeart, FiMessageCircle, FiX } from 'react-icons/fi'
+import { FiArrowLeft, FiMoreVertical, FiUsers, FiShare2, FiBell, FiUser, FiLoader, FiSend, FiHeart, FiMessageCircle } from 'react-icons/fi'
 import { supabase } from '@/lib/supabase/client'
+import { ChannelInfoModal } from './ChannelInfoModal'
 
 interface ChannelViewProps {
   channelId: string
@@ -38,7 +39,9 @@ interface Channel {
   description: string
   subscribers_count: number
   avatar_url: string | null
+  cover_url: string | null
   owner_id: string
+  created_at: string
   is_owner?: boolean
 }
 
@@ -53,6 +56,7 @@ export function ChannelView({ channelId, onBack, isMobile = false }: ChannelView
   const [comments, setComments] = useState<Comment[]>([])
   const [newComment, setNewComment] = useState('')
   const [sendingComment, setSendingComment] = useState(false)
+  const [showInfoModal, setShowInfoModal] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const loadPosts = async () => {
@@ -166,7 +170,6 @@ export function ChannelView({ channelId, onBack, isMobile = false }: ChannelView
         schema: 'public',
         table: 'channel_post_likes'
       }, () => {
-        // Перезагружаем посты для обновления счетчиков лайков
         loadPosts()
       })
       .subscribe()
@@ -179,7 +182,6 @@ export function ChannelView({ channelId, onBack, isMobile = false }: ChannelView
         schema: 'public',
         table: 'channel_post_comments'
       }, () => {
-        // Перезагружаем посты для обновления счетчиков комментариев
         loadPosts()
       })
       .subscribe()
@@ -227,13 +229,11 @@ export function ChannelView({ channelId, onBack, isMobile = false }: ChannelView
           .eq('user_id', currentUserId)
         
         if (!error) {
-          // Обновляем счетчик лайков в таблице постов
           await supabase
             .from('channel_posts')
             .update({ views: Math.max(0, post.views - 1) })
             .eq('id', postId)
           
-          // Обновляем локальное состояние
           setPosts(prev => prev.map(p => 
             p.id === postId 
               ? { ...p, views: Math.max(0, p.views - 1), liked_by_user: false }
@@ -250,13 +250,11 @@ export function ChannelView({ channelId, onBack, isMobile = false }: ChannelView
           })
         
         if (!error) {
-          // Обновляем счетчик лайков в таблице постов
           await supabase
             .from('channel_posts')
             .update({ views: post.views + 1 })
             .eq('id', postId)
           
-          // Обновляем локальное состояние
           setPosts(prev => prev.map(p => 
             p.id === postId 
               ? { ...p, views: p.views + 1, liked_by_user: true }
@@ -290,7 +288,6 @@ export function ChannelView({ channelId, onBack, isMobile = false }: ChannelView
       
       if (error) throw error
       
-      // Обновляем счетчик комментариев в таблице постов
       await supabase
         .from('channel_posts')
         .update({ comments: post.comments + 1 })
@@ -311,7 +308,6 @@ export function ChannelView({ channelId, onBack, isMobile = false }: ChannelView
       setComments(prev => [...prev, newCommentObj])
       setNewComment('')
       
-      // Обновляем локальное состояние поста
       setPosts(prev => prev.map(p => 
         p.id === postId 
           ? { ...p, comments: p.comments + 1 }
@@ -403,18 +399,24 @@ export function ChannelView({ channelId, onBack, isMobile = false }: ChannelView
             <FiArrowLeft className="text-gray-400" size={20} />
           </button>
           
-          <div className="w-10 h-10 rounded-full overflow-hidden bg-gradient-to-br from-[#2b6bff] to-[#0055ff] flex items-center justify-center">
-            {channel.avatar_url ? (
-              <img src={channel.avatar_url} alt={channel.name} className="w-full h-full object-cover" />
-            ) : (
-              <FiUsers className="text-white" size={20} />
-            )}
-          </div>
-          
-          <div>
-            <h1 className="font-semibold text-white">{channel.name}</h1>
-            <p className="text-xs text-gray-400">{channel.subscribers_count} подписчиков</p>
-          </div>
+          <button
+            onClick={() => setShowInfoModal(true)}
+            className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+          >
+            <div className="w-10 h-10 rounded-full overflow-hidden bg-gradient-to-br from-[#2b6bff] to-[#0055ff]">
+              {channel.avatar_url ? (
+                <img src={channel.avatar_url} alt={channel.name} className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center">
+                  <FiUsers className="text-white" size={20} />
+                </div>
+              )}
+            </div>
+            <div>
+              <h1 className="font-semibold text-white">{channel.name}</h1>
+              <p className="text-xs text-gray-400">{channel.subscribers_count} подписчиков</p>
+            </div>
+          </button>
         </div>
         
         <div className="flex items-center gap-2">
@@ -429,6 +431,14 @@ export function ChannelView({ channelId, onBack, isMobile = false }: ChannelView
           </button>
         </div>
       </div>
+
+      {/* Cover Image */}
+      {channel.cover_url && (
+        <div 
+          className="h-32 bg-cover bg-center" 
+          style={{ backgroundImage: `url(${channel.cover_url})` }}
+        />
+      )}
 
       {/* Posts */}
       <div className="flex-1 overflow-y-auto px-4 py-4">
@@ -573,6 +583,13 @@ export function ChannelView({ channelId, onBack, isMobile = false }: ChannelView
           </div>
         </div>
       )}
+
+      {/* Channel Info Modal */}
+      <ChannelInfoModal
+        isOpen={showInfoModal}
+        onClose={() => setShowInfoModal(false)}
+        channelId={channelId}
+      />
     </div>
   )
 }
