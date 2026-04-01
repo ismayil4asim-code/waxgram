@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { FiSearch, FiUser, FiLoader, FiPlus } from 'react-icons/fi'
+import { FiSearch, FiUser, FiLoader, FiUsers } from 'react-icons/fi'
 import { SearchUser } from './SearchUser'
+import { Notifications } from './Notifications'
 import { supabase } from '@/lib/supabase/client'
 
 interface Chat {
@@ -36,6 +37,7 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
     }
     
     try {
+      // Загружаем текущего пользователя
       const { data: userData } = await supabase
         .from('profiles')
         .select('username, avatar_url')
@@ -46,6 +48,7 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
         setCurrentUser(userData)
       }
       
+      // Загружаем комнаты пользователя
       const { data: rooms } = await supabase
         .from('room_members')
         .select('room_id')
@@ -59,18 +62,44 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
       
       const roomIds = rooms.map(r => r.room_id)
       
+      // Загружаем последние сообщения
       const { data: lastMessages } = await supabase
         .from('messages')
-        .select('room_id, content, created_at')
+        .select(`
+          room_id, 
+          content, 
+          created_at,
+          sender_id,
+          message_reads (user_id)
+        `)
         .in('room_id', roomIds)
         .order('created_at', { ascending: false })
       
+      // Группируем последние сообщения по комнатам
+      const latestMessagesByRoom: Record<string, any> = {}
+      lastMessages?.forEach(msg => {
+        if (!latestMessagesByRoom[msg.room_id]) {
+          latestMessagesByRoom[msg.room_id] = {
+            content: msg.content,
+            created_at: msg.created_at,
+            sender_id: msg.sender_id,
+            read_by: msg.message_reads?.map((r: any) => r.user_id) || []
+          }
+        }
+      })
+      
+      // Загружаем участников комнат
       const { data: members } = await supabase
         .from('room_members')
         .select(`
           room_id,
           user_id,
-          profiles:profiles!user_id (username, avatar_url)
+          profiles:profiles!user_id (
+            id,
+            username,
+            avatar_url,
+            online
+          )
         `)
         .in('room_id', roomIds)
       
@@ -82,9 +111,18 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
         
         if (otherUser?.profiles) {
           const profile = Array.isArray(otherUser.profiles) ? otherUser.profiles[0] : otherUser.profiles
-          const lastMsg = lastMessages?.find(m => m.room_id === room.room_id)
+          const lastMsg = latestMessagesByRoom[room.room_id]
           
           if (profile) {
+            // Проверяем, прочитано ли сообщение
+            let unread = 0
+            if (lastMsg && lastMsg.sender_id !== tempUserId) {
+              const isRead = lastMsg.read_by?.includes(tempUserId)
+              if (!isRead) {
+                unread = 1
+              }
+            }
+            
             chatList.push({
               id: otherUser.user_id,
               room_id: room.room_id,
@@ -92,13 +130,23 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
               username: profile.username || 'user',
               lastMessage: lastMsg?.content || 'Нет сообщений',
               time: lastMsg?.created_at ? new Date(lastMsg.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '',
-              unread: 0,
+              unread: unread,
               avatar: profile.avatar_url || null,
-              online: false
+              online: profile.online || false
             })
           }
         }
       }
+      
+      // Сортируем чаты: сначала с непрочитанными, затем по времени последнего сообщения
+      chatList.sort((a, b) => {
+        if (a.unread > 0 && b.unread === 0) return -1
+        if (a.unread === 0 && b.unread > 0) return 1
+        
+        const timeA = new Date(a.time).getTime()
+        const timeB = new Date(b.time).getTime()
+        return timeB - timeA
+      })
       
       setChats(chatList)
     } catch (error) {
@@ -111,15 +159,34 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
   useEffect(() => {
     loadChats()
     
-    const subscription = supabase
+    // Подписка на новые сообщения
+    const messagesSubscription = supabase
       .channel('messages')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, () => {
         loadChats()
       })
       .subscribe()
     
+    // Подписка на прочтения сообщений
+    const readsSubscription = supabase
+      .channel('message-reads')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_reads' }, () => {
+        loadChats()
+      })
+      .subscribe()
+    
+    // Подписка на обновления профилей (статус онлайн)
+    const profileSubscription = supabase
+      .channel('profiles')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, () => {
+        loadChats()
+      })
+      .subscribe()
+    
     return () => {
-      subscription.unsubscribe()
+      messagesSubscription.unsubscribe()
+      readsSubscription.unsubscribe()
+      profileSubscription.unsubscribe()
     }
   }, [])
 
@@ -161,7 +228,6 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
 
   return (
     <div className="h-full flex flex-col">
-      {/* Header - адаптивный */}
       <div className="glass px-4 py-3 safe-top">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
@@ -176,7 +242,10 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
               WaxGram
             </h1>
           </div>
-          <SearchUser onAddContact={handleAddContact} />
+          <div className="flex items-center gap-2">
+            <Notifications />
+            <SearchUser onAddContact={handleAddContact} />
+          </div>
         </div>
         
         <div className="relative">
@@ -191,11 +260,10 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
         </div>
       </div>
 
-      {/* Список чатов */}
       <div className="flex-1 overflow-y-auto px-3 py-2 pb-20">
         {filteredChats.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center text-gray-500 py-10">
-            <FiUser size={48} className="mb-3 opacity-50" />
+            <FiUsers size={48} className="mb-3 opacity-50" />
             <p>Нет чатов</p>
             <p className="text-sm mt-2">Нажмите на кнопку + вверху,<br />чтобы найти пользователя</p>
           </div>
@@ -208,7 +276,9 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
               transition={{ delay: Math.min(index * 0.03, 0.3) }}
               whileTap={{ scale: 0.98 }}
               onClick={() => onSelectChat(chat.id, chat.room_id)}
-              className="flex items-center gap-3 p-3 rounded-xl active:bg-white/5 cursor-pointer transition-all mb-1"
+              className={`flex items-center gap-3 p-3 rounded-xl active:bg-white/5 cursor-pointer transition-all mb-1 ${
+                chat.unread > 0 ? 'bg-[#2b6bff]/10' : ''
+              }`}
             >
               <div className="relative flex-shrink-0">
                 <div className="w-12 h-12 rounded-full overflow-hidden bg-gradient-to-br from-[#2b6bff] to-[#0055ff] flex items-center justify-center">
@@ -225,18 +295,25 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
 
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">
-                  <h3 className="font-semibold text-white truncate text-base">{chat.name}</h3>
+                  <div>
+                    <h3 className={`font-semibold truncate ${chat.unread > 0 ? 'text-white' : 'text-gray-300'}`}>
+                      {chat.name}
+                    </h3>
+                    <p className="text-xs text-gray-500">@{chat.username}</p>
+                  </div>
                   <span className="text-xs text-gray-400 flex-shrink-0 ml-2">{chat.time}</span>
                 </div>
-                <p className="text-xs text-gray-500 mt-0.5">@{chat.username}</p>
-                <p className="text-sm text-gray-400 truncate mt-1">{chat.lastMessage}</p>
-              </div>
-              
-              {chat.unread > 0 && (
-                <div className="w-5 h-5 bg-[#2b6bff] rounded-full flex items-center justify-center flex-shrink-0">
-                  <span className="text-white text-xs">{chat.unread}</span>
+                <div className="flex items-center justify-between mt-1">
+                  <p className={`text-sm truncate ${chat.unread > 0 ? 'text-white font-medium' : 'text-gray-400'}`}>
+                    {chat.lastMessage}
+                  </p>
+                  {chat.unread > 0 && (
+                    <span className="ml-2 w-5 h-5 bg-[#2b6bff] rounded-full flex items-center justify-center flex-shrink-0">
+                      <span className="text-white text-xs">{chat.unread}</span>
+                    </span>
+                  )}
                 </div>
-              )}
+              </div>
             </motion.div>
           ))
         )}
