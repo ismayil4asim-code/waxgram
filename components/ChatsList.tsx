@@ -40,7 +40,7 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
       // Загружаем текущего пользователя
       const { data: userData } = await supabase
         .from('profiles')
-        .select('username, avatar_url')
+        .select('username, avatar_url, verified, verified_type')
         .eq('id', tempUserId)
         .single()
       
@@ -159,7 +159,6 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
   useEffect(() => {
     loadChats()
     
-    // Подписка на новые сообщения
     const messagesSubscription = supabase
       .channel('messages')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, () => {
@@ -167,7 +166,6 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
       })
       .subscribe()
     
-    // Подписка на прочтения сообщений
     const readsSubscription = supabase
       .channel('message-reads')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_reads' }, () => {
@@ -175,7 +173,6 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
       })
       .subscribe()
     
-    // Подписка на обновления профилей (статус онлайн)
     const profileSubscription = supabase
       .channel('profiles')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, () => {
@@ -212,6 +209,31 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
     }
   }
 
+  const getVerificationBadge = () => {
+    if (!currentUser?.verified) return null
+    
+    if (currentUser.verified_type === 'developer') {
+      return (
+        <div className="relative">
+          <img src="/image-developer-192.png" alt="Developer" className="w-5 h-5" />
+          <span className="absolute -top-1 -right-1 text-[10px]">⚡</span>
+        </div>
+      )
+    }
+    
+    if (currentUser.verified_type === 'moderator') {
+      return (
+        <div className="relative">
+          <img src="/image-support-192.png" alt="Moderator" className="w-5 h-5" />
+        </div>
+      )
+    }
+    
+    return (
+      <img src="/image-192.png" alt="Verified" className="w-5 h-5" />
+    )
+  }
+
   const filteredChats = chats.filter(chat =>
     chat.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     chat.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -238,9 +260,12 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
                 <FiUser className="text-white" size={18} />
               </div>
             )}
-            <h1 className="text-xl font-bold bg-gradient-to-r from-[#2b6bff] to-[#00c6ff] bg-clip-text text-transparent">
-              WaxGram
-            </h1>
+            <div className="flex items-center gap-1">
+              <h1 className="text-xl font-bold bg-gradient-to-r from-[#2b6bff] to-[#00c6ff] bg-clip-text text-transparent">
+                WaxGram
+              </h1>
+              {getVerificationBadge()}
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <Notifications />
