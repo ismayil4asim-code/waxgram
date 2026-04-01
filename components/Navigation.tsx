@@ -18,7 +18,7 @@ export function Navigation({ currentView, onViewChange }: NavigationProps) {
   return (
     <div className="hidden md:flex w-20 bg-black/30 backdrop-blur-xl border-r border-white/10 flex-col items-center py-8 z-10">
       <div className="mb-8">
-        <img src="https://i.ibb.co/dsywjJ5Y/W.png" alt="WaxTG" className="w-12 h-12 rounded-full" />
+        <img src="https://i.ibb.co/dsywjJ5Y/W.png" alt="WaxGram" className="w-12 h-12 rounded-full" />
       </div>
       
       <div className="flex-1 flex flex-col gap-4">
@@ -29,7 +29,6 @@ export function Navigation({ currentView, onViewChange }: NavigationProps) {
           return (
             <motion.button
               key={item.id}
-              whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => onViewChange(item.id as any)}
               className={`relative p-3 rounded-xl transition-all ${
