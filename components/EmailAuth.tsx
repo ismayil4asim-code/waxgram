@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { FiMail, FiCheckCircle, FiArrowRight, FiShield } from 'react-icons/fi'
+import { FiMail, FiCheckCircle, FiArrowRight } from 'react-icons/fi'
 import { RegisterForm } from './RegisterForm'
 
 export function EmailAuth() {
@@ -13,23 +13,23 @@ export function EmailAuth() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [timer, setTimer] = useState(0)
-  const [debugCode, setDebugCode] = useState('')
   const router = useRouter()
 
   const sendCode = async () => {
     if (!email) return
     setLoading(true)
     setError('')
-    setDebugCode('')
 
     try {
-      // Генерируем код на клиенте
-      const generatedCode = Math.floor(100000 + Math.random() * 900000).toString()
-      setDebugCode(generatedCode)
-      
-      // Сохраняем код в localStorage для проверки
-      localStorage.setItem(`temp_code_${email}`, generatedCode)
-      localStorage.setItem(`temp_code_expires_${email}`, (Date.now() + 5 * 60 * 1000).toString())
+      const res = await fetch('/api/auth/send-email-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) throw new Error(data.error)
 
       setStep('code')
       setTimer(60)
@@ -53,41 +53,23 @@ export function EmailAuth() {
     setError('')
 
     try {
-      const storedCode = localStorage.getItem(`temp_code_${email}`)
-      const storedExpires = localStorage.getItem(`temp_code_expires_${email}`)
-      
-      if (!storedCode) {
-        throw new Error('Код не найден. Запросите новый код')
-      }
-      
-      if (Date.now() > parseInt(storedExpires)) {
-        localStorage.removeItem(`temp_code_${email}`)
-        localStorage.removeItem(`temp_code_expires_${email}`)
-        throw new Error('Код истек. Запросите новый')
-      }
-      
-      if (storedCode !== code) {
-        throw new Error('Неверный код')
-      }
-      
-      // Код верный, очищаем
-      localStorage.removeItem(`temp_code_${email}`)
-      localStorage.removeItem(`temp_code_expires_${email}`)
-      
-      // Проверяем существование пользователя
-      const savedUsers = localStorage.getItem('users')
-      const users = savedUsers ? JSON.parse(savedUsers) : []
-      const existingUser = users.find((u: any) => u.email === email)
-      
-      if (existingUser) {
-        // Существующий пользователь - вход
-        localStorage.setItem('temp_user_id', existingUser.id)
-        localStorage.setItem('temp_email', existingUser.email)
-        localStorage.setItem('temp_username', existingUser.username)
-        router.push('/')
-      } else {
-        // Новый пользователь - регистрация
+      const res = await fetch('/api/auth/verify-email-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, code })
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) throw new Error(data.error)
+
+      if (data.isNewUser) {
         setStep('register')
+      } else {
+        localStorage.setItem('temp_user_id', data.userId)
+        localStorage.setItem('temp_email', data.email)
+        localStorage.setItem('temp_username', data.username)
+        router.push('/')
       }
     } catch (err: any) {
       setError(err.message)
@@ -100,29 +82,23 @@ export function EmailAuth() {
     setLoading(true)
     
     try {
-      const savedUsers = localStorage.getItem('users')
-      const users = savedUsers ? JSON.parse(savedUsers) : []
-      
-      const newUser = {
-        id: Date.now().toString(),
-        email: email,
-        username: registerData.username,
-        bio: registerData.bio,
-        birthDate: registerData.birthDate,
-        avatarUrl: registerData.avatarUrl,
-        createdAt: new Date().toISOString()
-      }
-      
-      users.push(newUser)
-      localStorage.setItem('users', JSON.stringify(users))
-      
-      localStorage.setItem('temp_user_id', newUser.id)
-      localStorage.setItem('temp_email', newUser.email)
-      localStorage.setItem('temp_username', newUser.username)
-      
-      if (registerData.avatarUrl) {
-        localStorage.setItem('user_avatar', registerData.avatarUrl)
-      }
+      const res = await fetch('/api/auth/verify-email-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          email, 
+          code, 
+          ...registerData 
+        })
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) throw new Error(data.error)
+
+      localStorage.setItem('temp_user_id', data.userId)
+      localStorage.setItem('temp_email', data.email)
+      localStorage.setItem('temp_username', data.username)
       
       router.push('/')
     } catch (err: any) {
@@ -177,14 +153,9 @@ export function EmailAuth() {
             <p className="text-gray-400 text-center mb-4">
               Код отправлен на <span className="text-white">{email}</span>
             </p>
-            
-            {debugCode && (
-              <div className="mb-4 p-3 bg-green-500/10 border border-green-500/20 rounded-xl">
-                <p className="text-xs text-green-400 text-center">
-                  🔧 Ваш код: <strong className="text-lg ml-1">{debugCode}</strong>
-                </p>
-              </div>
-            )}
+            <p className="text-xs text-center text-gray-500 mb-4">
+              Проверьте почту (папку Входящие или Спам)
+            </p>
             
             <div className="relative mb-4">
               <FiCheckCircle className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
