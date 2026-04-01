@@ -3,9 +3,14 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 
 export async function POST(request: NextRequest) {
   try {
-    const { email, code, username, bio, birthDate, avatarUrl } = await request.json()
+    const body = await request.json()
+    console.log('=== VERIFY EMAIL CODE ===')
+    console.log('Request body:', body)
+    
+    const { email, code, username, bio, birthDate, avatarUrl } = body
     
     if (!email || !code) {
+      console.log('Missing email or code')
       return NextResponse.json({ error: 'Email и код обязательны' }, { status: 400 })
     }
     
@@ -21,7 +26,13 @@ export async function POST(request: NextRequest) {
       .limit(1)
       .single()
     
+    console.log('Code record found:', !!codeRecord)
+    if (codeRecord) {
+      console.log('Code record:', codeRecord)
+    }
+    
     if (codeError || !codeRecord) {
+      console.log('Code error:', codeError)
       return NextResponse.json({ error: 'Неверный или истекший код' }, { status: 400 })
     }
     
@@ -32,14 +43,17 @@ export async function POST(request: NextRequest) {
       .eq('id', codeRecord.id)
     
     // Проверяем существует ли пользователь
-    let { data: existingUser } = await supabaseAdmin
+    const { data: existingUser, error: userError } = await supabaseAdmin
       .from('profiles')
       .select('id, username')
       .eq('email', email)
       .single()
     
+    console.log('Existing user found:', !!existingUser)
+    
     // Если пользователь существует - вход
     if (existingUser) {
+      console.log('Existing user login:', existingUser.id)
       // Обновляем статус онлайн
       await supabaseAdmin
         .from('profiles')
@@ -57,8 +71,11 @@ export async function POST(request: NextRequest) {
     
     // Если пользователь не существует и нет данных для регистрации
     if (!username) {
+      console.log('No username provided, registration required')
       return NextResponse.json({ error: 'Требуется регистрация' }, { status: 400 })
     }
+    
+    console.log('Creating new user with data:', { email, username, bio, birthDate, avatarUrl })
     
     // Создаем нового пользователя
     const { data: newUser, error: createError } = await supabaseAdmin
@@ -80,6 +97,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Ошибка создания пользователя: ' + createError.message }, { status: 500 })
     }
     
+    console.log('User created successfully:', newUser.id)
+    
     return NextResponse.json({
       success: true,
       userId: newUser.id,
@@ -90,6 +109,6 @@ export async function POST(request: NextRequest) {
     
   } catch (error) {
     console.error('Verify code error:', error)
-    return NextResponse.json({ error: 'Внутренняя ошибка' }, { status: 500 })
+    return NextResponse.json({ error: 'Внутренняя ошибка: ' + String(error) }, { status: 500 })
   }
 }
