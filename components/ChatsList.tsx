@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { FiSearch, FiUser, FiLoader } from 'react-icons/fi'
+import { FiSearch, FiUser, FiLoader, FiPlus } from 'react-icons/fi'
 import { SearchUser } from './SearchUser'
 import { supabase } from '@/lib/supabase/client'
 
@@ -27,7 +27,6 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [currentUser, setCurrentUser] = useState<any>(null)
   const [loading, setLoading] = useState(true)
-  const [isSearching, setIsSearching] = useState(false)
 
   const loadChats = async () => {
     const tempUserId = localStorage.getItem('temp_user_id')
@@ -36,10 +35,7 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
       return
     }
     
-    setIsSearching(true)
-    
     try {
-      // Загружаем текущего пользователя
       const { data: userData } = await supabase
         .from('profiles')
         .select('username, avatar_url')
@@ -50,7 +46,6 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
         setCurrentUser(userData)
       }
       
-      // Загружаем комнаты пользователя
       const { data: rooms } = await supabase
         .from('room_members')
         .select('room_id')
@@ -59,40 +54,33 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
       if (!rooms || rooms.length === 0) {
         setChats([])
         setLoading(false)
-        setIsSearching(false)
         return
       }
       
       const roomIds = rooms.map(r => r.room_id)
       
-      // Загружаем последние сообщения
       const { data: lastMessages } = await supabase
         .from('messages')
-        .select('room_id, content, created_at, sender_id')
+        .select('room_id, content, created_at')
         .in('room_id', roomIds)
         .order('created_at', { ascending: false })
       
-      // Загружаем участников комнат
       const { data: members } = await supabase
         .from('room_members')
         .select(`
           room_id,
           user_id,
-          profiles:profiles!user_id (
-            username,
-            avatar_url
-          )
+          profiles:profiles!user_id (username, avatar_url)
         `)
         .in('room_id', roomIds)
       
-      // Формируем список чатов
       const chatList: Chat[] = []
       
       for (const room of rooms) {
         const roomMembers = members?.filter(m => m.room_id === room.room_id) || []
         const otherUser = roomMembers.find(m => m.user_id !== tempUserId)
         
-        if (otherUser && otherUser.profiles) {
+        if (otherUser?.profiles) {
           const profile = Array.isArray(otherUser.profiles) ? otherUser.profiles[0] : otherUser.profiles
           const lastMsg = lastMessages?.find(m => m.room_id === room.room_id)
           
@@ -117,14 +105,12 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
       console.error('Load chats error:', error)
     } finally {
       setLoading(false)
-      setIsSearching(false)
     }
   }
 
   useEffect(() => {
     loadChats()
     
-    // Подписка на новые сообщения
     const subscription = supabase
       .channel('messages')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, () => {
@@ -142,7 +128,6 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
     if (!tempUserId) return
     
     try {
-      // Создаем комнату для чата
       const response = await fetch('/api/chats', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -152,7 +137,6 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
       const data = await response.json()
       
       if (data.success) {
-        // Перезагружаем список чатов
         await loadChats()
       }
     } catch (error) {
@@ -177,14 +161,15 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="glass px-4 py-4">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
+      {/* Header - адаптивный */}
+      <div className="glass px-4 py-3 safe-top">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
             {currentUser?.avatar_url ? (
-              <img src={currentUser.avatar_url} alt={currentUser.username} className="w-10 h-10 rounded-full object-cover" />
+              <img src={currentUser.avatar_url} alt={currentUser.username} className="w-9 h-9 rounded-full object-cover" />
             ) : (
-              <div className="w-10 h-10 bg-gradient-to-br from-[#2b6bff] to-[#0055ff] rounded-full flex items-center justify-center">
-                <FiUser className="text-white" size={20} />
+              <div className="w-9 h-9 bg-gradient-to-br from-[#2b6bff] to-[#0055ff] rounded-full flex items-center justify-center">
+                <FiUser className="text-white" size={18} />
               </div>
             )}
             <h1 className="text-xl font-bold bg-gradient-to-r from-[#2b6bff] to-[#00c6ff] bg-clip-text text-transparent">
@@ -201,19 +186,16 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Поиск чатов..."
-            className="w-full pl-10 pr-4 py-2 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:border-[#2b6bff] text-white placeholder-gray-500 text-base"
+            className="w-full pl-10 pr-4 py-2.5 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:border-[#2b6bff] text-white placeholder-gray-500 text-base"
           />
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-2 py-2">
-        {isSearching && filteredChats.length === 0 ? (
-          <div className="flex items-center justify-center py-10">
-            <FiLoader className="animate-spin text-[#2b6bff]" size={24} />
-          </div>
-        ) : filteredChats.length === 0 ? (
-          <div className="text-center text-gray-500 py-10">
-            <FiUser size={48} className="mx-auto mb-3 opacity-50" />
+      {/* Список чатов */}
+      <div className="flex-1 overflow-y-auto px-3 py-2 pb-20">
+        {filteredChats.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-center text-gray-500 py-10">
+            <FiUser size={48} className="mb-3 opacity-50" />
             <p>Нет чатов</p>
             <p className="text-sm mt-2">Нажмите на кнопку + вверху,<br />чтобы найти пользователя</p>
           </div>
@@ -221,12 +203,12 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
           filteredChats.map((chat, index) => (
             <motion.div
               key={chat.id}
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: Math.min(index * 0.05, 0.5) }}
-              whileHover={{ scale: 1.02 }}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: Math.min(index * 0.03, 0.3) }}
+              whileTap={{ scale: 0.98 }}
               onClick={() => onSelectChat(chat.id, chat.room_id)}
-              className="flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 cursor-pointer transition-all active:bg-white/10"
+              className="flex items-center gap-3 p-3 rounded-xl active:bg-white/5 cursor-pointer transition-all mb-1"
             >
               <div className="relative flex-shrink-0">
                 <div className="w-12 h-12 rounded-full overflow-hidden bg-gradient-to-br from-[#2b6bff] to-[#0055ff] flex items-center justify-center">
@@ -243,21 +225,18 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
 
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="font-semibold text-white truncate">{chat.name}</h3>
-                    <p className="text-xs text-gray-500">@{chat.username}</p>
-                  </div>
+                  <h3 className="font-semibold text-white truncate text-base">{chat.name}</h3>
                   <span className="text-xs text-gray-400 flex-shrink-0 ml-2">{chat.time}</span>
                 </div>
-                <div className="flex items-center justify-between mt-1">
-                  <p className="text-sm text-gray-400 truncate">{chat.lastMessage}</p>
-                  {chat.unread > 0 && (
-                    <span className="ml-2 px-2 py-0.5 bg-[#2b6bff] text-white text-xs rounded-full flex-shrink-0">
-                      {chat.unread}
-                    </span>
-                  )}
-                </div>
+                <p className="text-xs text-gray-500 mt-0.5">@{chat.username}</p>
+                <p className="text-sm text-gray-400 truncate mt-1">{chat.lastMessage}</p>
               </div>
+              
+              {chat.unread > 0 && (
+                <div className="w-5 h-5 bg-[#2b6bff] rounded-full flex items-center justify-center flex-shrink-0">
+                  <span className="text-white text-xs">{chat.unread}</span>
+                </div>
+              )}
             </motion.div>
           ))
         )}
