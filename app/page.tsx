@@ -66,11 +66,12 @@ export default function Home() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen bg-gradient-to-br from-[#0a0a0a] via-[#0f0f1a] to-[#0a0a0a]">
-        <div className="w-8 h-8 border-2 border-[#2b6bff] border-t-transparent rounded-full animate-spin"></div>
+        <div className="spinner"></div>
       </div>
     )
   }
 
+  // Открытый чат
   if (selectedChat) {
     return (
       <div className="h-screen">
@@ -84,6 +85,7 @@ export default function Home() {
     )
   }
 
+  // Открытый канал
   if (selectedChannel) {
     return (
       <div className="h-screen">
@@ -96,10 +98,13 @@ export default function Home() {
     )
   }
 
+  // Главный экран
   return (
     <div className="flex h-screen bg-gradient-to-br from-[#0a0a0a] via-[#0f0f1a] to-[#0a0a0a] overflow-hidden">
+      {/* Десктопная навигация (скрыта на мобильных) */}
       <Navigation currentView={currentView} onViewChange={setCurrentView} />
       
+      {/* Основной контент */}
       <div className="flex-1 overflow-hidden">
         {currentView === 'chats' && (
           <ChatsList onSelectChat={handleSelectChat} />
@@ -115,11 +120,13 @@ export default function Home() {
         )}
       </div>
       
+      {/* Мобильная навигация снизу */}
       <MobileNavigation 
         currentView={currentView} 
         onViewChange={setCurrentView}
       />
       
+      {/* Модальное окно создания канала */}
       <CreateChannelModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
