@@ -13,12 +13,15 @@ export function EmailAuth() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [timer, setTimer] = useState(0)
+  const [debugCode, setDebugCode] = useState('')
+  const [showRegister, setShowRegister] = useState(false)
   const router = useRouter()
 
   const sendCode = async () => {
     if (!email) return
     setLoading(true)
     setError('')
+    setDebugCode('')
 
     try {
       const res = await fetch('/api/auth/send-email-code', {
@@ -33,6 +36,10 @@ export function EmailAuth() {
 
       setStep('code')
       setTimer(60)
+      
+      if (data.debugCode) {
+        setDebugCode(data.debugCode)
+      }
 
       const interval = setInterval(() => {
         setTimer(t => {
@@ -61,10 +68,20 @@ export function EmailAuth() {
 
       const data = await res.json()
 
-      if (!res.ok) throw new Error(data.error)
+      if (!res.ok) {
+        // Если пользователь не найден, показываем форму регистрации
+        if (data.error === 'Требуется регистрация') {
+          setStep('register')
+          setShowRegister(true)
+          setLoading(false)
+          return
+        }
+        throw new Error(data.error)
+      }
 
       if (data.isNewUser) {
         setStep('register')
+        setShowRegister(true)
       } else {
         localStorage.setItem('temp_user_id', data.userId)
         localStorage.setItem('temp_email', data.email)
@@ -99,6 +116,10 @@ export function EmailAuth() {
       localStorage.setItem('temp_user_id', data.userId)
       localStorage.setItem('temp_email', data.email)
       localStorage.setItem('temp_username', data.username)
+      
+      if (registerData.avatarUrl) {
+        localStorage.setItem('user_avatar', registerData.avatarUrl)
+      }
       
       router.push('/')
     } catch (err: any) {
@@ -157,6 +178,14 @@ export function EmailAuth() {
               Проверьте почту (папку Входящие или Спам)
             </p>
             
+            {debugCode && (
+              <div className="mb-4 p-3 bg-green-500/10 border border-green-500/20 rounded-xl">
+                <p className="text-xs text-green-400 text-center">
+                  🔧 Ваш код: <strong className="text-lg ml-1">{debugCode}</strong>
+                </p>
+              </div>
+            )}
+            
             <div className="relative mb-4">
               <FiCheckCircle className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
               <input
@@ -170,7 +199,9 @@ export function EmailAuth() {
               />
             </div>
             
-            {error && <p className="text-red-400 text-sm text-center mb-4">{error}</p>}
+            {error && (
+              <p className="text-red-400 text-sm text-center mb-4">{error}</p>
+            )}
             
             <button
               onClick={verifyCode}
