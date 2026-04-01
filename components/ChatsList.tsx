@@ -31,7 +31,10 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
   useEffect(() => {
     const loadChats = async () => {
       const tempUserId = localStorage.getItem('temp_user_id')
-      if (!tempUserId) return
+      if (!tempUserId) {
+        setLoading(false)
+        return
+      }
       
       // Загружаем текущего пользователя
       const { data: userData } = await supabase
@@ -45,53 +48,65 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
       }
       
       // Загружаем комнаты пользователя
-      const { data: rooms } = await supabase
+      const { data: rooms, error: roomsError } = await supabase
         .from('room_members')
         .select('room_id')
         .eq('user_id', tempUserId)
       
-      if (rooms && rooms.length > 0) {
-        const roomIds = rooms.map(r => r.room_id)
-        
-        // Загружаем последние сообщения
-        const { data: lastMessages } = await supabase
-          .from('messages')
-          .select('room_id, content, created_at, sender_id')
-          .in('room_id', roomIds)
-          .order('created_at', { ascending: false })
-        
-        // Загружаем участников комнат
-        const { data: members } = await supabase
-          .from('room_members')
-          .select('room_id, user_id, profiles(username, avatar_url)')
-          .in('room_id', roomIds)
-        
-        // Формируем список чатов
-        const chatList: Chat[] = []
-        
-        for (const room of rooms) {
-          const roomMembers = members?.filter(m => m.room_id === room.room_id) || []
-          const otherUser = roomMembers.find(m => m.user_id !== tempUserId)
-          const lastMsg = lastMessages?.find(m => m.room_id === room.room_id)
-          
-          if (otherUser?.profiles) {
-            chatList.push({
-              id: otherUser.user_id,
-              room_id: room.room_id,
-              name: otherUser.profiles.username || 'Пользователь',
-              username: otherUser.profiles.username || 'user',
-              lastMessage: lastMsg?.content || 'Нет сообщений',
-              time: lastMsg?.created_at ? new Date(lastMsg.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '',
-              unread: 0,
-              avatar: otherUser.profiles.avatar_url,
-              online: false
-            })
-          }
-        }
-        
-        setChats(chatList)
+      if (roomsError || !rooms || rooms.length === 0) {
+        setLoading(false)
+        return
       }
       
+      const roomIds = rooms.map(r => r.room_id)
+      
+      // Загружаем последние сообщения
+      const { data: lastMessages } = await supabase
+        .from('messages')
+        .select('room_id, content, created_at, sender_id')
+        .in('room_id', roomIds)
+        .order('created_at', { ascending: false })
+      
+      // Загружаем участников комнат с их профилями
+      const { data: members } = await supabase
+        .from('room_members')
+        .select(`
+          room_id,
+          user_id,
+          profiles:profiles!user_id (
+            username,
+            avatar_url
+          )
+        `)
+        .in('room_id', roomIds)
+      
+      // Формируем список чатов
+      const chatList: Chat[] = []
+      
+      for (const room of rooms) {
+        const roomMembers = members?.filter(m => m.room_id === room.room_id) || []
+        const otherUser = roomMembers.find(m => m.user_id !== tempUserId)
+        
+        if (otherUser && otherUser.profiles) {
+          // profiles может быть массивом или объектом
+          const profile = Array.isArray(otherUser.profiles) ? otherUser.profiles[0] : otherUser.profiles
+          const lastMsg = lastMessages?.find(m => m.room_id === room.room_id)
+          
+          chatList.push({
+            id: otherUser.user_id,
+            room_id: room.room_id,
+            name: profile?.username || 'Пользователь',
+            username: profile?.username || 'user',
+            lastMessage: lastMsg?.content || 'Нет сообщений',
+            time: lastMsg?.created_at ? new Date(lastMsg.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '',
+            unread: 0,
+            avatar: profile?.avatar_url || null,
+            online: false
+          })
+        }
+      }
+      
+      setChats(chatList)
       setLoading(false)
     }
     
@@ -100,7 +115,7 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
     // Подписка на новые сообщения
     const subscription = supabase
       .channel('messages')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, async (payload) => {
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, () => {
         // Обновляем список чатов
         loadChats()
       })
