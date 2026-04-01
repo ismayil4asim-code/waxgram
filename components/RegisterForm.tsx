@@ -19,20 +19,19 @@ export function RegisterForm({ email, onRegister, onBack }: RegisterFormProps) {
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
 
-  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     
     setUploading(true)
     
-    // Предпросмотр
     const reader = new FileReader()
     reader.onloadend = () => {
       setAvatar(reader.result as string)
+      setAvatarFile(file)
+      setUploading(false)
     }
     reader.readAsDataURL(file)
-    setAvatarFile(file)
-    setUploading(false)
   }
 
   const handleSubmit = async () => {
@@ -50,22 +49,8 @@ export function RegisterForm({ email, onRegister, onBack }: RegisterFormProps) {
     
     // Загружаем аватар если есть
     if (avatarFile) {
-      const formData = new FormData()
-      formData.append('file', avatarFile)
-      formData.append('email', email)
-      
-      try {
-        const res = await fetch('/api/upload-avatar', {
-          method: 'POST',
-          body: formData
-        })
-        const data = await res.json()
-        if (data.success) {
-          avatarUrl = data.avatarUrl
-        }
-      } catch (error) {
-        console.error('Avatar upload error:', error)
-      }
+      // Временно сохраняем как data URL
+      avatarUrl = avatar
     }
     
     onRegister({
