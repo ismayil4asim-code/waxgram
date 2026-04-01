@@ -89,40 +89,42 @@ export function ChatInterface({ chatId, roomId: initialRoomId, onBack, isMobile 
     initChat()
   }, [chatId, roomId])
 
-  useEffect(() => {
+  const loadMessages = async () => {
     if (!roomId) return
     
-    const loadMessages = async () => {
-      const { data, error } = await supabase
-        .from('messages')
-        .select(`
-          *,
-          message_reads (user_id)
-        `)
-        .eq('room_id', roomId)
-        .order('created_at', { ascending: true })
+    const { data, error } = await supabase
+      .from('messages')
+      .select(`
+        *,
+        message_reads (user_id)
+      `)
+      .eq('room_id', roomId)
+      .order('created_at', { ascending: true })
+    
+    if (!error && data) {
+      const formattedMessages = data.map(msg => ({
+        ...msg,
+        read_by: msg.message_reads?.map((r: any) => r.user_id) || []
+      }))
+      setMessages(formattedMessages)
       
-      if (!error && data) {
-        const formattedMessages = data.map(msg => ({
-          ...msg,
-          read_by: msg.message_reads?.map((r: any) => r.user_id) || []
-        }))
-        setMessages(formattedMessages)
-        
-        const unreadMessages = formattedMessages.filter(
-          msg => msg.sender_id === chatId && !msg.read_by?.includes(userId)
-        )
-        
-        for (const msg of unreadMessages) {
-          await supabase
-            .from('message_reads')
-            .insert({
-              message_id: msg.id,
-              user_id: userId
-            })
-        }
+      const unreadMessages = formattedMessages.filter(
+        msg => msg.sender_id === chatId && !msg.read_by?.includes(userId)
+      )
+      
+      for (const msg of unreadMessages) {
+        await supabase
+          .from('message_reads')
+          .insert({
+            message_id: msg.id,
+            user_id: userId
+          })
       }
     }
+  }
+
+  useEffect(() => {
+    if (!roomId) return
     
     loadMessages()
     
@@ -134,7 +136,8 @@ export function ChatInterface({ chatId, roomId: initialRoomId, onBack, isMobile 
         table: 'messages',
         filter: `room_id=eq.${roomId}`,
       }, (payload) => {
-        setMessages(prev => [...prev, payload.new as Message])
+        const newMessage = payload.new as Message
+        setMessages(prev => [...prev, newMessage])
         setTimeout(() => {
           messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
         }, 100)
