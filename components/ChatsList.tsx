@@ -16,6 +16,8 @@ interface Chat {
   unread: number
   avatar: string | null
   online: boolean
+  verified?: boolean
+  verified_type?: string | null
   room_id?: string
 }
 
@@ -93,7 +95,9 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
             id,
             username,
             avatar_url,
-            online
+            online,
+            verified,
+            verified_type
           )
         `)
         .in('room_id', roomIds)
@@ -126,7 +130,9 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
               time: lastMsg?.created_at ? new Date(lastMsg.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '',
               unread: unread,
               avatar: profile.avatar_url || null,
-              online: profile.online || false
+              online: profile.online || false,
+              verified: profile.verified || false,
+              verified_type: profile.verified_type || null
             })
           }
         }
@@ -202,7 +208,42 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
     }
   }
 
-  const getVerificationBadge = () => {
+  const getUserVerificationBadge = (user: Chat) => {
+    if (!user.verified) return null
+    
+    if (user.verified_type === 'developer') {
+      return (
+        <img 
+          src="/image-developer-192.png" 
+          alt="Developer" 
+          className="w-4 h-4 ml-1 inline"
+          title="Разработчик WaxGram"
+        />
+      )
+    }
+    
+    if (user.verified_type === 'moderator') {
+      return (
+        <img 
+          src="/image-support-192.png" 
+          alt="Moderator" 
+          className="w-4 h-4 ml-1 inline"
+          title="Модератор WaxGram"
+        />
+      )
+    }
+    
+    return (
+      <img 
+        src="/image-192.png" 
+        alt="Verified" 
+        className="w-4 h-4 ml-1 inline"
+        title="Подтвержденный пользователь"
+      />
+    )
+  }
+
+  const getCurrentUserVerificationBadge = () => {
     if (!currentUser?.verified) return null
     
     if (currentUser.verified_type === 'developer') {
@@ -267,7 +308,7 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
               <h1 className="text-xl font-bold bg-gradient-to-r from-[#2b6bff] to-[#00c6ff] bg-clip-text text-transparent">
                 WaxGram
               </h1>
-              {getVerificationBadge()}
+              {getCurrentUserVerificationBadge()}
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -323,14 +364,15 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
 
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">
-                  <div>
+                  <div className="flex items-center">
                     <h3 className={`font-semibold truncate ${chat.unread > 0 ? 'text-white' : 'text-gray-300'}`}>
                       {chat.name}
                     </h3>
-                    <p className="text-xs text-gray-500">@{chat.username}</p>
+                    {getUserVerificationBadge(chat)}
                   </div>
                   <span className="text-xs text-gray-400 flex-shrink-0 ml-2">{chat.time}</span>
                 </div>
+                <p className="text-xs text-gray-500">@{chat.username}</p>
                 <div className="flex items-center justify-between mt-1">
                   <p className={`text-sm truncate ${chat.unread > 0 ? 'text-white font-medium' : 'text-gray-400'}`}>
                     {chat.lastMessage}
