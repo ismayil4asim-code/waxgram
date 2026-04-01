@@ -1,167 +1,177 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { FiSearch, FiUser } from 'react-icons/fi'
-import { SearchUser } from './SearchUser'
+import { FiUser, FiCalendar, FiInfo, FiCamera, FiX } from 'react-icons/fi'
 
-interface Chat {
-  id: string
-  name: string
-  username: string
-  lastMessage: string
-  time: string
-  unread: number
-  avatar: string | null
-  online: boolean
+interface RegisterFormProps {
+  email: string
+  onRegister: (data: { username: string; bio: string; birthDate: string; avatarUrl: string | null }) => void
+  onBack: () => void
 }
 
-interface ChatsListProps {
-  onSelectChat: (chatId: string) => void
-}
+export function RegisterForm({ email, onRegister, onBack }: RegisterFormProps) {
+  const [username, setUsername] = useState('')
+  const [bio, setBio] = useState('')
+  const [birthDate, setBirthDate] = useState('')
+  const [avatar, setAvatar] = useState<string | null>(null)
+  const [avatarFile, setAvatarFile] = useState<File | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [error, setError] = useState('')
 
-export function ChatsList({ onSelectChat }: ChatsListProps) {
-  const [chats, setChats] = useState<Chat[]>([])
-  const [searchQuery, setSearchQuery] = useState('')
-  const [currentUser, setCurrentUser] = useState<any>(null)
-
-  useEffect(() => {
-    // Загружаем текущего пользователя
-    const tempUserId = localStorage.getItem('temp_user_id')
-    const users = JSON.parse(localStorage.getItem('users') || '[]')
-    const user = users.find((u: any) => u.id === tempUserId)
-    setCurrentUser(user)
+  const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
     
-    // Загружаем контакты
-    const savedContacts = localStorage.getItem('contacts')
-    if (savedContacts) {
-      setChats(JSON.parse(savedContacts))
-    } else {
-      const defaultChats = [
-        {
-          id: '1',
-          name: 'vaksek',
-          username: 'vaksek',
-          lastMessage: 'Ну и хули, норм получилось',
-          time: '14:15',
-          unread: 2,
-          avatar: 'https://i.ibb.co/zThS1F2P/photo-2026-03-29-10-46-46.jpg',
-          online: true
-        },
-        {
-          id: '2',
-          name: 'Поддержка WaxGram',
-          username: 'waxgram_support',
-          lastMessage: 'Здравствуйте! Чем можем помочь?',
-          time: '10:23',
-          unread: 0,
-          avatar: 'https://i.ibb.co/dsywjJ5Y/W.png',
-          online: true
-        }
-      ]
-      setChats(defaultChats)
-      localStorage.setItem('contacts', JSON.stringify(defaultChats))
-    }
-  }, [])
-
-  const handleAddContact = (newUser: any) => {
-    const newChat: Chat = {
-      id: newUser.id,
-      name: newUser.username,
-      username: newUser.username,
-      lastMessage: 'Новый контакт добавлен',
-      time: 'только что',
-      unread: 1,
-      avatar: newUser.avatar,
-      online: false
-    }
+    setUploading(true)
     
-    const updatedChats = [newChat, ...chats]
-    setChats(updatedChats)
-    localStorage.setItem('contacts', JSON.stringify(updatedChats))
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      setAvatar(reader.result as string)
+      setAvatarFile(file)
+      setUploading(false)
+    }
+    reader.readAsDataURL(file)
   }
 
-  const filteredChats = chats.filter(chat =>
-    chat.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    chat.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    chat.lastMessage.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  const handleSubmit = async () => {
+    if (!username.trim()) {
+      setError('Придумайте имя пользователя')
+      return
+    }
+    
+    if (username.length < 3) {
+      setError('Имя пользователя должно содержать минимум 3 символа')
+      return
+    }
+    
+    let avatarUrl = null
+    
+    // Загружаем аватар если есть
+    if (avatarFile) {
+      // Временно сохраняем как data URL
+      avatarUrl = avatar
+    }
+    
+    onRegister({
+      username: username.trim(),
+      bio: bio.trim(),
+      birthDate,
+      avatarUrl
+    })
+  }
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="glass px-6 py-4">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            {currentUser?.avatarUrl ? (
-              <img src={currentUser.avatarUrl} alt={currentUser.username} className="w-10 h-10 rounded-full object-cover" />
-            ) : (
-              <div className="w-10 h-10 bg-gradient-to-br from-[#2b6bff] to-[#0055ff] rounded-full flex items-center justify-center">
-                <FiUser className="text-white" size={20} />
-              </div>
-            )}
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-[#2b6bff] to-[#00c6ff] bg-clip-text text-transparent">
-              WaxGram
-            </h1>
-          </div>
-          <SearchUser onAddContact={handleAddContact} />
-        </div>
-        
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="glass-card p-8"
+    >
+      <h2 className="text-2xl font-bold text-white text-center mb-6">
+        Завершите регистрацию
+      </h2>
+      
+      <p className="text-gray-400 text-sm text-center mb-6">
+        Аккаунт для {email}
+      </p>
+      
+      {/* Avatar */}
+      <div className="flex justify-center mb-6">
         <div className="relative">
-          <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+          <div className="w-24 h-24 rounded-full overflow-hidden bg-gradient-to-br from-[#2b6bff] to-[#0055ff] flex items-center justify-center">
+            {avatar ? (
+              <img src={avatar} alt="Avatar" className="w-full h-full object-cover" />
+            ) : (
+              <FiUser className="text-white" size={40} />
+            )}
+          </div>
+          <label className="absolute bottom-0 right-0 p-2 bg-[#2b6bff] rounded-full cursor-pointer hover:bg-[#0055ff] transition-colors">
+            <FiCamera size={16} className="text-white" />
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleAvatarUpload}
+              className="hidden"
+            />
+          </label>
+        </div>
+      </div>
+      
+      {/* Username */}
+      <div className="mb-4">
+        <label className="block text-sm text-gray-400 mb-2">
+          Имя пользователя *
+        </label>
+        <div className="relative">
+          <FiUser className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
           <input
             type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Поиск сообщений или пользователей..."
-            className="w-full pl-10 pr-4 py-2 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:border-[#2b6bff] text-white placeholder-gray-500"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="например: john_doe"
+            className="w-full pl-12 pr-4 py-3 bg-white/5 border border-gray-700 rounded-xl focus:outline-none focus:border-[#2b6bff] text-white"
+          />
+        </div>
+        <p className="text-xs text-gray-500 mt-1">Только буквы, цифры и подчеркивания</p>
+      </div>
+      
+      {/* Birth Date */}
+      <div className="mb-4">
+        <label className="block text-sm text-gray-400 mb-2">
+          Дата рождения
+        </label>
+        <div className="relative">
+          <FiCalendar className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+          <input
+            type="date"
+            value={birthDate}
+            onChange={(e) => setBirthDate(e.target.value)}
+            className="w-full pl-12 pr-4 py-3 bg-white/5 border border-gray-700 rounded-xl focus:outline-none focus:border-[#2b6bff] text-white"
           />
         </div>
       </div>
-
-      <div className="flex-1 overflow-y-auto px-2 py-2">
-        {filteredChats.map((chat, index) => (
-          <motion.div
-            key={chat.id}
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: index * 0.05 }}
-            whileHover={{ scale: 1.02 }}
-            onClick={() => onSelectChat(chat.id)}
-            className="flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 cursor-pointer transition-all group"
-          >
-            <div className="relative">
-              <div className="w-12 h-12 rounded-full overflow-hidden bg-gradient-to-br from-[#2b6bff] to-[#0055ff] flex items-center justify-center">
-                {chat.avatar ? (
-                  <img src={chat.avatar} alt={chat.name} className="w-full h-full object-cover" />
-                ) : (
-                  <FiUser className="text-white" size={24} />
-                )}
-              </div>
-              {chat.online && (
-                <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-black"></div>
-              )}
-            </div>
-
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-semibold text-white">{chat.name}</h3>
-                  <p className="text-xs text-gray-500">@{chat.username}</p>
-                </div>
-                <span className="text-xs text-gray-400">{chat.time}</span>
-              </div>
-              <div className="flex items-center justify-between mt-1">
-                <p className="text-sm text-gray-400 truncate">{chat.lastMessage}</p>
-                {chat.unread > 0 && (
-                  <span className="ml-2 px-2 py-0.5 bg-[#2b6bff] text-white text-xs rounded-full">
-                    {chat.unread}
-                  </span>
-                )}
-              </div>
-            </div>
-          </motion.div>
-        ))}
+      
+      {/* Bio */}
+      <div className="mb-6">
+        <label className="block text-sm text-gray-400 mb-2">
+          О себе
+        </label>
+        <div className="relative">
+          <FiInfo className="absolute left-4 top-4 text-gray-400" size={18} />
+          <textarea
+            value={bio}
+            onChange={(e) => setBio(e.target.value)}
+            placeholder="Расскажите немного о себе..."
+            rows={3}
+            className="w-full pl-12 pr-4 py-3 bg-white/5 border border-gray-700 rounded-xl focus:outline-none focus:border-[#2b6bff] text-white resize-none"
+          />
+        </div>
       </div>
-    </div>
+      
+      {error && (
+        <p className="text-red-400 text-sm text-center mb-4">{error}</p>
+      )}
+      
+      <div className="flex gap-3">
+        <motion.button
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          onClick={onBack}
+          className="flex-1 bg-white/10 text-white py-3 rounded-xl font-medium hover:bg-white/20 transition-all"
+        >
+          Назад
+        </motion.button>
+        
+        <motion.button
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          onClick={handleSubmit}
+          disabled={!username.trim()}
+          className="flex-1 bg-gradient-to-r from-[#2b6bff] to-[#0055ff] text-white py-3 rounded-xl font-medium hover:opacity-90 disabled:opacity-50 transition-all"
+        >
+          Завершить
+        </motion.button>
+      </div>
+    </motion.div>
   )
 }
