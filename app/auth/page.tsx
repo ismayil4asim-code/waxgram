@@ -1,6 +1,6 @@
 'use client'
 
-import { TelegramAuth } from '@/components/TelegramAuth'
+import { EmailAuth } from '@/components/EmailAuth'
 import { motion } from 'framer-motion'
 import { FiShield } from 'react-icons/fi'
 
@@ -35,13 +35,11 @@ export default function AuthPage() {
             transition={{ delay: 0.2 }}
             className="text-gray-400 text-sm mt-2"
           >
-            Безопасный мессенджер
+            Войдите по email
           </motion.p>
         </div>
 
-        <div className="glass-card p-8">
-          <TelegramAuth />
-        </div>
+        <EmailAuth />
         
         <p className="text-center text-gray-500 text-xs mt-6 flex items-center justify-center gap-2">
           <FiShield size={12} />
