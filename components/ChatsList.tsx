@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { FiSearch, FiUser } from 'react-icons/fi'
 import { SearchUser } from './SearchUser'
+import { supabase } from '@/lib/supabase/client'
 
 interface Chat {
   id: string
@@ -26,42 +27,47 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
   const [currentUser, setCurrentUser] = useState<any>(null)
 
   useEffect(() => {
-    // Загружаем текущего пользователя
-    const tempUserId = localStorage.getItem('temp_user_id')
-    const users = JSON.parse(localStorage.getItem('users') || '[]')
-    const user = users.find((u: any) => u.id === tempUserId)
-    setCurrentUser(user)
-    
-    // Загружаем контакты
-    const savedContacts = localStorage.getItem('contacts')
-    if (savedContacts) {
-      setChats(JSON.parse(savedContacts))
-    } else {
-      const defaultChats = [
-        {
-          id: '1',
-          name: 'vaksek',
-          username: 'vaksek',
-          lastMessage: 'Ну и хули, норм получилось',
-          time: '14:15',
-          unread: 2,
-          avatar: 'https://i.ibb.co/zThS1F2P/photo-2026-03-29-10-46-46.jpg',
-          online: true
-        },
-        {
-          id: '2',
-          name: 'Поддержка WaxGram',
-          username: 'waxgram_support',
-          lastMessage: 'Здравствуйте! Чем можем помочь?',
-          time: '10:23',
-          unread: 0,
-          avatar: 'https://i.ibb.co/dsywjJ5Y/W.png',
-          online: true
+    const loadUserAndChats = async () => {
+      const tempUserId = localStorage.getItem('temp_user_id')
+      
+      if (tempUserId) {
+        // Загружаем текущего пользователя из базы
+        const { data: userData } = await supabase
+          .from('profiles')
+          .select('username, avatar_url')
+          .eq('id', tempUserId)
+          .single()
+        
+        if (userData) {
+          setCurrentUser(userData)
+          localStorage.setItem('temp_username', userData.username)
+          if (userData.avatar_url) localStorage.setItem('user_avatar', userData.avatar_url)
         }
-      ]
-      setChats(defaultChats)
-      localStorage.setItem('contacts', JSON.stringify(defaultChats))
+      }
+      
+      // Загружаем контакты
+      const savedContacts = localStorage.getItem('contacts')
+      if (savedContacts) {
+        setChats(JSON.parse(savedContacts))
+      } else {
+        const defaultChats = [
+          {
+            id: '1',
+            name: 'vaksek',
+            username: 'vaksek',
+            lastMessage: 'Ну и хули, норм получилось',
+            time: '14:15',
+            unread: 0,
+            avatar: 'https://i.ibb.co/zThS1F2P/photo-2026-03-29-10-46-46.jpg',
+            online: true
+          }
+        ]
+        setChats(defaultChats)
+        localStorage.setItem('contacts', JSON.stringify(defaultChats))
+      }
     }
+    
+    loadUserAndChats()
   }, [])
 
   const handleAddContact = (newUser: any) => {
@@ -92,8 +98,8 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
       <div className="glass px-6 py-4">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            {currentUser?.avatarUrl ? (
-              <img src={currentUser.avatarUrl} alt={currentUser.username} className="w-10 h-10 rounded-full object-cover" />
+            {currentUser?.avatar_url ? (
+              <img src={currentUser.avatar_url} alt={currentUser.username} className="w-10 h-10 rounded-full object-cover" />
             ) : (
               <div className="w-10 h-10 bg-gradient-to-br from-[#2b6bff] to-[#0055ff] rounded-full flex items-center justify-center">
                 <FiUser className="text-white" size={20} />
