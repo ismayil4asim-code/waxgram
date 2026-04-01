@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { FiArrowLeft, FiMoreVertical, FiPhone, FiVideo, FiUser, FiCheck } from 'react-icons/fi'
+import { supabase } from '@/lib/supabase/client'
 import { Toast } from './Toast'
 import { MessageInput } from './MessageInput'
 
@@ -26,6 +27,7 @@ export function ChatInterface({ chatId, onBack, isMobile = false }: ChatInterfac
   const [chatName, setChatName] = useState('')
   const [chatUsername, setChatUsername] = useState('')
   const [chatAvatar, setChatAvatar] = useState<string | null>(null)
+  const [currentUser, setCurrentUser] = useState<any>(null)
   const [toast, setToast] = useState({ show: false, message: '', type: 'info' as 'success' | 'error' | 'info' })
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -35,40 +37,46 @@ export function ChatInterface({ chatId, onBack, isMobile = false }: ChatInterfac
   }
 
   useEffect(() => {
-    const tempUserId = localStorage.getItem('temp_user_id')
-    if (!tempUserId) {
-      window.location.href = '/auth'
-      return
-    }
-    setUserId(tempUserId)
-
-    // Данные для чатов
-    const chatData: Record<string, { name: string; username: string; avatar: string | null }> = {
-      '1': { 
-        name: 'vaksek', 
-        username: 'vaksek',
-        avatar: 'https://i.ibb.co/zThS1F2P/photo-2026-03-29-10-46-46.jpg'
-      },
-      '2': { 
-        name: 'Поддержка WaxGram', 
-        username: 'waxgram_support',
-        avatar: 'https://i.ibb.co/dsywjJ5Y/W.png'
+    const initChat = async () => {
+      const tempUserId = localStorage.getItem('temp_user_id')
+      if (!tempUserId) {
+        window.location.href = '/auth'
+        return
       }
-    }
-    
-    const currentChat = chatData[chatId || '1']
-    if (currentChat) {
-      setChatName(currentChat.name)
-      setChatUsername(currentChat.username)
-      setChatAvatar(currentChat.avatar)
-    }
+      setUserId(tempUserId)
+      
+      // Загружаем текущего пользователя
+      const { data: userData } = await supabase
+        .from('profiles')
+        .select('username, avatar_url')
+        .eq('id', tempUserId)
+        .single()
+      
+      if (userData) {
+        setCurrentUser(userData)
+      }
+      
+      // Данные для чатов
+      const chatData: Record<string, { name: string; username: string; avatar: string | null }> = {
+        '1': { 
+          name: 'vaksek', 
+          username: 'vaksek',
+          avatar: 'https://i.ibb.co/zThS1F2P/photo-2026-03-29-10-46-46.jpg'
+        }
+      }
+      
+      const currentChat = chatData[chatId || '1']
+      if (currentChat) {
+        setChatName(currentChat.name)
+        setChatUsername(currentChat.username)
+        setChatAvatar(currentChat.avatar)
+      }
 
-    // Сообщения
-    if (chatId === '1') {
+      // Сообщения
       setMessages([
         {
           id: '1',
-          content: 'здарова пидарас',
+          content: 'Привет! Это тестовое сообщение',
           sender_id: 'other',
           time: '13:45',
           status: 'read'
@@ -79,28 +87,13 @@ export function ChatInterface({ chatId, onBack, isMobile = false }: ChatInterfac
           sender_id: 'other',
           time: '14:15',
           status: 'read'
-        },
-        {
-          id: '3',
-          content: 'отвечай давай',
-          sender_id: 'other',
-          time: '14:30',
-          status: 'read'
         }
       ])
-    } else if (chatId === '2') {
-      setMessages([
-        {
-          id: '1',
-          content: 'Здравствуйте! Чем можем помочь?',
-          sender_id: 'other',
-          time: '10:23',
-          status: 'read'
-        }
-      ])
-    }
 
-    showToast('Подключено к защищенному чату', 'success')
+      showToast('Подключено к защищенному чату', 'success')
+    }
+    
+    initChat()
   }, [chatId])
 
   const handleSendMessage = (text: string) => {
