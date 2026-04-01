@@ -178,13 +178,28 @@ export function AdminPanel() {
 
   const getVerifiedBadge = (type: string | null) => {
     if (type === 'developer') {
-      return { icon: '⚡', color: 'text-purple-400', label: 'Разработчик', bg: 'bg-purple-500/20' }
+      return { 
+        icon: <img src="/image-developer-192.png" alt="Developer" className="w-4 h-4 inline" />, 
+        color: 'text-purple-400', 
+        label: 'Разработчик', 
+        bg: 'bg-purple-500/20' 
+      }
     }
     if (type === 'popular') {
-      return { icon: '✓', color: 'text-[#2b6bff]', label: 'Популярный автор', bg: 'bg-[#2b6bff]/20' }
+      return { 
+        icon: <img src="/image-192.png" alt="Verified" className="w-4 h-4 inline" />, 
+        color: 'text-[#2b6bff]', 
+        label: 'Популярный автор', 
+        bg: 'bg-[#2b6bff]/20' 
+      }
     }
     if (type === 'moderator') {
-      return { icon: '🛡️', color: 'text-green-400', label: 'Модератор', bg: 'bg-green-500/20' }
+      return { 
+        icon: <img src="/image-support-192.png" alt="Moderator" className="w-4 h-4 inline" />, 
+        color: 'text-green-400', 
+        label: 'Модератор', 
+        bg: 'bg-green-500/20' 
+      }
     }
     return null
   }
@@ -320,7 +335,7 @@ export function AdminPanel() {
                           }`}
                           title="Выдать галочку разработчика"
                         >
-                          ⚡
+                          <img src="/image-developer-192.png" alt="Developer" className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => updateVerification(user.id, true, 'popular')}
@@ -331,7 +346,7 @@ export function AdminPanel() {
                           }`}
                           title="Выдать галочку популярного автора"
                         >
-                          <FiStar size={14} />
+                          <img src="/image-192.png" alt="Verified" className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => updateVerification(user.id, true, 'moderator')}
@@ -342,7 +357,7 @@ export function AdminPanel() {
                           }`}
                           title="Выдать галочку модератора"
                         >
-                          🛡️
+                          <img src="/image-support-192.png" alt="Moderator" className="w-4 h-4" />
                         </button>
                         {user.verified && (
                           <button
