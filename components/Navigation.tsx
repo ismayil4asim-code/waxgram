@@ -2,12 +2,12 @@
 
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { FiMessageCircle, FiUsers, FiUser, FiShield } from 'react-icons/fi'
+import { FiMessageCircle, FiUsers, FiUser, FiShield, FiHome } from 'react-icons/fi'
 import { supabase } from '@/lib/supabase/client'
 
 interface NavigationProps {
-  currentView: 'chats' | 'channels' | 'profile' | 'admin'
-  onViewChange: (view: 'chats' | 'channels' | 'profile' | 'admin') => void
+  currentView: 'feed' | 'chats' | 'channels' | 'profile' | 'admin'
+  onViewChange: (view: 'feed' | 'chats' | 'channels' | 'profile' | 'admin') => void
 }
 
 export function Navigation({ currentView, onViewChange }: NavigationProps) {
@@ -32,6 +32,7 @@ export function Navigation({ currentView, onViewChange }: NavigationProps) {
   }, [])
 
   const navItems = [
+    { id: 'feed', icon: FiHome, label: 'Лента' },
     { id: 'chats', icon: FiMessageCircle, label: 'Чаты' },
     { id: 'channels', icon: FiUsers, label: 'Каналы' },
     { id: 'profile', icon: FiUser, label: 'Профиль' },
