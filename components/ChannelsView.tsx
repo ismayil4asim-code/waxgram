@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { FiSearch, FiPlus, FiUsers, FiLoader, FiUser, FiEye, FiEyeOff } from 'react-icons/fi'
+import { FiSearch, FiPlus, FiUsers, FiLoader, FiUser, FiX } from 'react-icons/fi'
 import { supabase } from '@/lib/supabase/client'
 
 interface Channel {
