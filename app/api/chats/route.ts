@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
     
     const roomIds = userRooms?.map(r => r.room_id) || []
     
-    let roomId = null
+    let roomId: string | null = null
     
     if (roomIds.length > 0) {
       const { data: mutualRoom } = await supabaseAdmin
