@@ -7,8 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "vercel-build": "next build"
-  },
+    "analyze": "ANALYZE=true next build",
+    "optimize": "npm run build && npm run start" 
+},
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
     "bcryptjs": "^2.4.3",
