@@ -80,7 +80,7 @@ export function CreateChannelModal({ isOpen, onClose, onCreate }: CreateChannelM
         throw new Error(`Вы уже создали канал "${existingChannel.name}". Можно создать только один канал`)
       }
       
-      let avatarUrl = null
+      let avatarUrl: string | null = null
       
       // Загружаем аватар если есть
       if (avatarFile) {
@@ -93,7 +93,7 @@ export function CreateChannelModal({ isOpen, onClose, onCreate }: CreateChannelM
           const { data: { publicUrl } } = supabase.storage
             .from('channel-avatars')
             .getPublicUrl(data.path)
-          avatarUrl = publicUrl ?? null
+          avatarUrl = publicUrl
         } else if (uploadError) {
           console.error('Avatar upload error:', uploadError)
         }
