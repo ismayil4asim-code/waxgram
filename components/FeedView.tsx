@@ -147,7 +147,7 @@ export function FeedView() {
     setSending(true)
     
     try {
-      let imageUrl = null
+      let imageUrl: string | null = null
       
       if (newImage) {
         const reader = new FileReader()
