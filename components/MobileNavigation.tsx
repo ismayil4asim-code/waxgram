@@ -1,13 +1,13 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { FiMessageCircle, FiUsers, FiUser, FiShield } from 'react-icons/fi'
+import { FiMessageCircle, FiUsers, FiUser, FiShield, FiHome } from 'react-icons/fi'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase/client'
 
 interface MobileNavigationProps {
-  currentView: 'chats' | 'channels' | 'profile' | 'admin'
-  onViewChange: (view: 'chats' | 'channels' | 'profile' | 'admin') => void
+  currentView: 'feed' | 'chats' | 'channels' | 'profile' | 'admin'
+  onViewChange: (view: 'feed' | 'chats' | 'channels' | 'profile' | 'admin') => void
 }
 
 export function MobileNavigation({ currentView, onViewChange }: MobileNavigationProps) {
@@ -32,6 +32,7 @@ export function MobileNavigation({ currentView, onViewChange }: MobileNavigation
   }, [])
 
   const navItems = [
+    { id: 'feed', icon: FiHome, label: 'Лента' },
     { id: 'chats', icon: FiMessageCircle, label: 'Чаты' },
     { id: 'channels', icon: FiUsers, label: 'Каналы' },
     { id: 'profile', icon: FiUser, label: 'Профиль' },
