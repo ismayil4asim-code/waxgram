@@ -93,7 +93,7 @@ export function CreateChannelModal({ isOpen, onClose, onCreate }: CreateChannelM
           const { data: { publicUrl } } = supabase.storage
             .from('channel-avatars')
             .getPublicUrl(data.path)
-          avatarUrl = publicUrl
+          avatarUrl = publicUrl ?? null
         } else if (uploadError) {
           console.error('Avatar upload error:', uploadError)
         }
