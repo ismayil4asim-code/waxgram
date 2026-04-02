@@ -24,9 +24,6 @@ export function getSupabaseClient() {
           'X-Client-Info': 'waxgram',
         },
       },
-      db: {
-        schema: 'public',
-      },
     })
   }
   return supabaseInstance
