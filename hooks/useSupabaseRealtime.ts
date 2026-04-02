@@ -146,7 +146,7 @@ export function useSupabaseRealtime(roomId: string | null, userId: string | null
   const sendMessage = async (content: string, type: string = 'text', file?: File) => {
     if (!roomId || !userId || (!content && !file)) return
 
-    let fileUrl = null
+    let fileUrl: string | null = null
 
     if (file) {
       const fileName = `${Date.now()}_${file.name}`
