@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Navigation } from '@/components/Navigation'
 import { MobileNavigation } from '@/components/MobileNavigation'
+import { FeedView } from '@/components/FeedView'
 import { ChatsList } from '@/components/ChatsList'
 import { ChatInterface } from '@/components/ChatInterface'
 import { ProfileView } from '@/components/ProfileView'
@@ -13,7 +14,7 @@ import { ChannelView } from '@/components/ChannelView'
 import { AdminPanel } from '@/components/AdminPanel'
 
 export default function Home() {
-  const [currentView, setCurrentView] = useState<'chats' | 'channels' | 'profile' | 'admin'>('chats')
+  const [currentView, setCurrentView] = useState<'feed' | 'chats' | 'channels' | 'profile' | 'admin'>('feed')
   const [selectedChat, setSelectedChat] = useState<{ id: string; roomId?: string } | null>(null)
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null)
   const [isMobile, setIsMobile] = useState(false)
@@ -102,21 +103,16 @@ export default function Home() {
       <Navigation currentView={currentView} onViewChange={setCurrentView} />
       
       <div className="flex-1 overflow-hidden">
-        {currentView === 'chats' && (
-          <ChatsList onSelectChat={handleSelectChat} />
-        )}
+        {currentView === 'feed' && <FeedView />}
+        {currentView === 'chats' && <ChatsList onSelectChat={handleSelectChat} />}
         {currentView === 'channels' && (
           <ChannelsView 
             onCreateChannel={() => setIsCreateModalOpen(true)} 
             onSelectChannel={handleSelectChannel}
           />
         )}
-        {currentView === 'profile' && (
-          <ProfileView onLogout={handleLogout} />
-        )}
-        {currentView === 'admin' && (
-          <AdminPanel />
-        )}
+        {currentView === 'profile' && <ProfileView onLogout={handleLogout} />}
+        {currentView === 'admin' && <AdminPanel />}
       </div>
       
       <MobileNavigation 
