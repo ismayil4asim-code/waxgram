@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
-import { FiCamera, FiEdit2, FiMail, FiLock, FiLogOut, FiCheck, FiX, FiUser, FiCalendar } from 'react-icons/fi'
+import { FiCamera, FiEdit2, FiMail, FiLock, FiLogOut, FiCheck, FiX, FiUser, FiCalendar, FiUserPlus } from 'react-icons/fi'
 import { supabase } from '@/lib/supabase/client'
 
 interface ProfileViewProps {
@@ -13,18 +13,30 @@ export function ProfileView({ onLogout }: ProfileViewProps) {
   const [user, setUser] = useState<any>(null)
   const [isEditing, setIsEditing] = useState(false)
   const [username, setUsername] = useState('')
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
   const [bio, setBio] = useState('')
   const [avatar, setAvatar] = useState<string | null>(null)
   const [birthDate, setBirthDate] = useState('')
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [usernameError, setUsernameError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const validateUsername = (value: string) => {
+    const regex = /^[a-zA-Z0-9_]+$/
+    if (!regex.test(value)) {
+      setUsernameError('Только английские буквы, цифры и подчеркивания')
+      return false
+    }
+    setUsernameError('')
+    return true
+  }
 
   useEffect(() => {
     const loadProfile = async () => {
       const userId = localStorage.getItem('temp_user_id')
-      const email = localStorage.getItem('temp_email')
       
       if (!userId) {
         setLoading(false)
@@ -45,8 +57,10 @@ export function ProfileView({ onLogout }: ProfileViewProps) {
           
           setUser({
             id: userId,
-            email: email || 'user@waxgram.com',
+            email: 'скрыт',
             username: savedUsername || 'Пользователь',
+            first_name: '',
+            last_name: '',
             bio: savedBio || '',
             avatar_url: savedAvatar || null,
             birth_date: '',
@@ -60,6 +74,8 @@ export function ProfileView({ onLogout }: ProfileViewProps) {
         } else if (data) {
           setUser(data)
           setUsername(data.username || 'Пользователь')
+          setFirstName(data.first_name || '')
+          setLastName(data.last_name || '')
           setBio(data.bio || '')
           setAvatar(data.avatar_url)
           setBirthDate(data.birth_date || '')
@@ -141,11 +157,17 @@ export function ProfileView({ onLogout }: ProfileViewProps) {
   const handleSave = async () => {
     if (!user?.id) return
     
+    if (!validateUsername(username)) {
+      return
+    }
+    
     setSaving(true)
     
     try {
       const updates: any = {
         username: username,
+        first_name: firstName,
+        last_name: lastName,
         bio: bio,
         birth_date: birthDate || null,
         avatar_url: avatar,
@@ -254,14 +276,38 @@ export function ProfileView({ onLogout }: ProfileViewProps) {
             {isEditing ? (
               <>
                 <div>
-                  <label className="block text-sm text-gray-400 mb-2">Имя пользователя *</label>
+                  <label className="block text-sm text-gray-400 mb-2">Username *</label>
                   <input
                     type="text"
                     value={username}
-                    onChange={(e) => setUsername(e.target.value)}
+                    onChange={(e) => {
+                      setUsername(e.target.value)
+                      validateUsername(e.target.value)
+                    }}
                     className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:border-[#2b6bff] text-white"
                   />
-                  <p className="text-xs text-gray-500 mt-1">Только буквы, цифры и подчеркивания</p>
+                  {usernameError && <p className="text-red-400 text-xs mt-1">{usernameError}</p>}
+                  <p className="text-xs text-gray-500 mt-1">Только английские буквы, цифры и подчеркивания</p>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm text-gray-400 mb-2">Имя</label>
+                    <input
+                      type="text"
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.target.value)}
+                      className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:border-[#2b6bff] text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-400 mb-2">Фамилия</label>
+                    <input
+                      type="text"
+                      value={lastName}
+                      onChange={(e) => setLastName(e.target.value)}
+                      className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:border-[#2b6bff] text-white"
+                    />
+                  </div>
                 </div>
                 <div>
                   <label className="block text-sm text-gray-400 mb-2">Дата рождения</label>
@@ -307,6 +353,8 @@ export function ProfileView({ onLogout }: ProfileViewProps) {
                     onClick={() => {
                       setIsEditing(false)
                       setUsername(user?.username || 'Пользователь')
+                      setFirstName(user?.first_name || '')
+                      setLastName(user?.last_name || '')
                       setBio(user?.bio || '')
                       setAvatar(user?.avatar_url)
                       setBirthDate(user?.birth_date || '')
@@ -323,17 +371,26 @@ export function ProfileView({ onLogout }: ProfileViewProps) {
                   <div className="flex items-center gap-3">
                     <FiUser className="text-gray-400" size={20} />
                     <div>
-                      <p className="text-sm text-gray-400">Имя пользователя</p>
+                      <p className="text-sm text-gray-400">Username</p>
                       <p className="text-white font-medium">@{username}</p>
                     </div>
                   </div>
                   {getVerifiedBadge()}
                 </div>
+                {(firstName || lastName) && (
+                  <div className="flex items-center gap-3 py-2">
+                    <FiUserPlus className="text-gray-400" size={20} />
+                    <div>
+                      <p className="text-sm text-gray-400">Имя и фамилия</p>
+                      <p className="text-white font-medium">{`${firstName} ${lastName}`.trim()}</p>
+                    </div>
+                  </div>
+                )}
                 <div className="flex items-center gap-3 py-2">
                   <FiMail className="text-gray-400" size={20} />
                   <div>
                     <p className="text-sm text-gray-400">Email</p>
-                    <p className="text-white font-medium">{user?.email}</p>
+                    <p className="text-white font-medium">скрыт</p>
                   </div>
                 </div>
                 {birthDate && (
