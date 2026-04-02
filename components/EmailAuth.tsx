@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { FiMail, FiCheckCircle, FiArrowRight } from 'react-icons/fi'
@@ -13,12 +13,15 @@ export function EmailAuth() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [timer, setTimer] = useState(0)
+  const [debugCode, setDebugCode] = useState('')
   const router = useRouter()
+  const savedCodeRef = useRef('')
 
   const sendCode = async () => {
     if (!email) return
     setLoading(true)
     setError('')
+    setDebugCode('')
 
     try {
       const res = await fetch('/api/auth/send-email-code', {
@@ -33,6 +36,11 @@ export function EmailAuth() {
 
       setStep('code')
       setTimer(60)
+      
+      if (data.debugCode) {
+        setDebugCode(data.debugCode)
+        savedCodeRef.current = data.debugCode
+      }
 
       const interval = setInterval(() => {
         setTimer(t => {
@@ -86,26 +94,40 @@ export function EmailAuth() {
     setError('')
     
     try {
+      console.log('Registering with:', { 
+        email, 
+        code: code || savedCodeRef.current, 
+        ...registerData 
+      })
+      
       const res = await fetch('/api/auth/verify-email-code', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           email, 
-          code,
+          code: code || savedCodeRef.current,
           ...registerData
         })
       })
 
       const data = await res.json()
+      console.log('Register response:', data)
 
-      if (!res.ok) throw new Error(data.error)
+      if (!res.ok) {
+        throw new Error(data.error || 'Ошибка регистрации')
+      }
 
       localStorage.setItem('temp_user_id', data.userId)
       localStorage.setItem('temp_email', data.email)
       localStorage.setItem('temp_username', data.username)
       
+      if (registerData.avatarUrl) {
+        localStorage.setItem('user_avatar', registerData.avatarUrl)
+      }
+      
       router.push('/')
     } catch (err: any) {
+      console.error('Register error:', err)
       setError(err.message)
       setLoading(false)
     }
@@ -161,6 +183,14 @@ export function EmailAuth() {
               Проверьте почту (папку Входящие или Спам)
             </p>
             
+            {debugCode && (
+              <div className="mb-4 p-3 bg-green-500/10 border border-green-500/20 rounded-xl">
+                <p className="text-xs text-green-400 text-center">
+                  🔧 Ваш код: <strong className="text-lg ml-1">{debugCode}</strong>
+                </p>
+              </div>
+            )}
+            
             <div className="relative mb-4">
               <FiCheckCircle className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
               <input
@@ -174,7 +204,9 @@ export function EmailAuth() {
               />
             </div>
             
-            {error && <p className="text-red-400 text-sm text-center mb-4">{error}</p>}
+            {error && (
+              <p className="text-red-400 text-sm text-center mb-4">{error}</p>
+            )}
             
             <button
               onClick={verifyCode}
