@@ -107,7 +107,7 @@ export function RegisterForm({ email, onRegister, onBack }: RegisterFormProps) {
     setIsSubmitting(true)
     setError('')
     
-    let avatarUrl = null
+    let avatarUrl: string | null = null
     
     if (avatarFile) {
       avatarUrl = avatar
