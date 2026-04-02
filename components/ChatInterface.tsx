@@ -286,7 +286,7 @@ export function ChatInterface({ chatId, roomId: initialRoomId, onBack, isMobile 
 
   const isMessageRead = (message: Message) => {
     if (message.sender_id !== userId) return false
-    return message.read_by?.length > 0
+  return (message.read_by?.length ?? 0) > 0
   }
 
   if (loading) {
