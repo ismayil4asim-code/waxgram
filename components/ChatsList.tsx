@@ -11,13 +11,15 @@ interface Chat {
   id: string
   name: string
   username: string
+  firstName: string
+  lastName: string
   lastMessage: string
   time: string
   unread: number
   avatar: string | null
   online: boolean
-  verified?: boolean
-  verified_type?: string | null
+  verified: boolean
+  verified_type: string | null
   room_id?: string
 }
 
@@ -39,9 +41,10 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
     }
     
     try {
+      // Загружаем текущего пользователя
       const { data: userData } = await supabase
         .from('profiles')
-        .select('username, avatar_url, verified, verified_type')
+        .select('username, avatar_url, verified, verified_type, first_name, last_name')
         .eq('id', tempUserId)
         .single()
       
@@ -49,6 +52,7 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
         setCurrentUser(userData)
       }
       
+      // Загружаем комнаты пользователя
       const { data: rooms } = await supabase
         .from('room_members')
         .select('room_id')
@@ -62,6 +66,7 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
       
       const roomIds = rooms.map(r => r.room_id)
       
+      // Загружаем последние сообщения
       const { data: lastMessages } = await supabase
         .from('messages')
         .select(`
@@ -74,6 +79,7 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
         .in('room_id', roomIds)
         .order('created_at', { ascending: false })
       
+      // Группируем последние сообщения по комнатам
       const latestMessagesByRoom: Record<string, any> = {}
       lastMessages?.forEach(msg => {
         if (!latestMessagesByRoom[msg.room_id]) {
@@ -86,6 +92,7 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
         }
       })
       
+      // Загружаем участников комнат
       const { data: members } = await supabase
         .from('room_members')
         .select(`
@@ -94,6 +101,8 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
           profiles:profiles!user_id (
             id,
             username,
+            first_name,
+            last_name,
             avatar_url,
             online,
             verified,
@@ -113,6 +122,7 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
           const lastMsg = latestMessagesByRoom[room.room_id]
           
           if (profile) {
+            // Проверяем, прочитано ли сообщение
             let unread = 0
             if (lastMsg && lastMsg.sender_id !== tempUserId) {
               const isRead = lastMsg.read_by?.includes(tempUserId)
@@ -121,11 +131,22 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
               }
             }
             
+            // Формируем отображаемое имя (приоритет: имя + фамилия > username)
+            let displayName = profile.username || 'Пользователь'
+            if (profile.first_name) {
+              displayName = profile.first_name
+              if (profile.last_name) {
+                displayName += ` ${profile.last_name}`
+              }
+            }
+            
             chatList.push({
               id: otherUser.user_id,
               room_id: room.room_id,
-              name: profile.username || 'Пользователь',
+              name: displayName,
               username: profile.username || 'user',
+              firstName: profile.first_name || '',
+              lastName: profile.last_name || '',
               lastMessage: lastMsg?.content || 'Нет сообщений',
               time: lastMsg?.created_at ? new Date(lastMsg.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '',
               unread: unread,
@@ -138,6 +159,7 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
         }
       }
       
+      // Сортируем чаты: сначала с непрочитанными, затем по времени последнего сообщения
       chatList.sort((a, b) => {
         if (a.unread > 0 && b.unread === 0) return -1
         if (a.unread === 0 && b.unread > 0) return 1
@@ -208,10 +230,10 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
     }
   }
 
-  const getUserVerificationBadge = (user: Chat) => {
-    if (!user.verified) return null
+  const getUserVerificationBadge = (chat: Chat) => {
+    if (!chat.verified) return null
     
-    if (user.verified_type === 'developer') {
+    if (chat.verified_type === 'developer') {
       return (
         <img 
           src="/image-developer-192.png" 
@@ -222,7 +244,7 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
       )
     }
     
-    if (user.verified_type === 'moderator') {
+    if (chat.verified_type === 'moderator') {
       return (
         <img 
           src="/image-support-192.png" 
@@ -364,7 +386,7 @@ export function ChatsList({ onSelectChat }: ChatsListProps) {
 
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center">
+                  <div className="flex items-center flex-wrap">
                     <h3 className={`font-semibold truncate ${chat.unread > 0 ? 'text-white' : 'text-gray-300'}`}>
                       {chat.name}
                     </h3>
