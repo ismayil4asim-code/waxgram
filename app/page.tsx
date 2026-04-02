@@ -12,6 +12,7 @@ import { ChannelsView } from '@/components/ChannelsView'
 import { CreateChannelModal } from '@/components/CreateChannelModal'
 import { ChannelView } from '@/components/ChannelView'
 import { AdminPanel } from '@/components/AdminPanel'
+import { supabase } from '@/lib/supabase/client'
 
 export default function Home() {
   const [currentView, setCurrentView] = useState<'feed' | 'chats' | 'channels' | 'profile' | 'admin'>('feed')
@@ -23,13 +24,35 @@ export default function Home() {
   const router = useRouter()
 
   useEffect(() => {
-    const tempUserId = localStorage.getItem('temp_user_id')
-    if (!tempUserId) {
-      router.push('/auth')
-    } else {
+    const checkUser = async () => {
+      const tempUserId = localStorage.getItem('temp_user_id')
+
+      if (!tempUserId) {
+        router.push('/auth')
+        return
+      }
+
+      // Проверяем существует ли пользователь в БД
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('id', tempUserId)
+        .maybeSingle()
+
+      if (!data || error) {
+        // Пользователь удалён — чистим localStorage и редиректим
+        localStorage.removeItem('temp_user_id')
+        localStorage.removeItem('temp_email')
+        localStorage.removeItem('temp_username')
+        router.push('/auth')
+        return
+      }
+
       setIsLoading(false)
     }
-    
+
+    checkUser()
+
     const checkMobile = () => {
       setIsMobile(window.innerWidth < 768)
     }
