@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { FiShield, FiSearch, FiCheck, FiX, FiUser, FiStar, FiUsers, FiMessageSquare, FiHash, FiTrendingUp } from 'react-icons/fi'
+import { FiShield, FiSearch, FiCheck, FiX, FiUser, FiStar, FiUsers, FiMessageSquare, FiHash, FiTrendingUp, FiTool, FiLoader } from 'react-icons/fi'
 import { supabase } from '@/lib/supabase/client'
 import { Toast } from './Toast'
 
@@ -39,6 +39,9 @@ export function AdminPanel() {
   })
   const [toast, setToast] = useState({ show: false, message: '', type: 'info' as 'success' | 'error' | 'info' })
   const [currentUser, setCurrentUser] = useState<any>(null)
+  const [maintenanceMode, setMaintenanceMode] = useState(false)
+  const [maintenanceMessage, setMaintenanceMessage] = useState('')
+  const [togglingMaintenance, setTogglingMaintenance] = useState(false)
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setToast({ show: true, message, type })
@@ -62,6 +65,7 @@ export function AdminPanel() {
       setCurrentUser(user)
       loadStats()
       loadUsers()
+      loadMaintenanceStatus()
     }
     
     checkAdmin()
@@ -129,6 +133,17 @@ export function AdminPanel() {
     setLoading(false)
   }
 
+  const loadMaintenanceStatus = async () => {
+    try {
+      const response = await fetch('/api/admin/maintenance')
+      const data = await response.json()
+      setMaintenanceMode(data.maintenance)
+      setMaintenanceMessage(data.message)
+    } catch (error) {
+      console.error('Load maintenance status error:', error)
+    }
+  }
+
   const updateVerification = async (userId: string, verified: boolean, verifiedType: string | null) => {
     try {
       const { error } = await supabase
@@ -173,6 +188,36 @@ export function AdminPanel() {
     } catch (error) {
       console.error('Update error:', error)
       showToast('Ошибка обновления', 'error')
+    }
+  }
+
+  const toggleMaintenance = async () => {
+    setTogglingMaintenance(true)
+    try {
+      const userId = localStorage.getItem('temp_user_id')
+      const response = await fetch('/api/admin/maintenance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          enabled: !maintenanceMode,
+          message: maintenanceMessage || 'Технические работы. Пожалуйста, зайдите позже.',
+          token: userId
+        })
+      })
+      
+      const data = await response.json()
+      if (data.success) {
+        setMaintenanceMode(data.maintenance)
+        setMaintenanceMessage(data.message)
+        showToast(`Режим обслуживания ${data.maintenance ? 'включен' : 'выключен'}`, 'success')
+      } else {
+        showToast(data.error || 'Ошибка', 'error')
+      }
+    } catch (error) {
+      console.error('Toggle maintenance error:', error)
+      showToast('Ошибка при переключении режима', 'error')
+    } finally {
+      setTogglingMaintenance(false)
     }
   }
 
@@ -221,6 +266,47 @@ export function AdminPanel() {
             <h1 className="text-xl font-bold text-white">Панель администратора</h1>
             <p className="text-xs text-gray-400">Управление пользователями и галочками</p>
           </div>
+        </div>
+        
+        {/* Режим обслуживания */}
+        <div className="bg-white/5 rounded-xl p-4 mb-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <FiTool className="text-yellow-400" size={20} />
+              <h3 className="font-medium text-white">Режим обслуживания</h3>
+            </div>
+            <button
+              onClick={toggleMaintenance}
+              disabled={togglingMaintenance}
+              className={`px-4 py-2 rounded-xl transition-all ${
+                maintenanceMode 
+                  ? 'bg-red-500/20 text-red-400 border border-red-500/30' 
+                  : 'bg-green-500/20 text-green-400 border border-green-500/30'
+              }`}
+            >
+              {togglingMaintenance ? (
+                <FiLoader className="animate-spin mx-auto" size={16} />
+              ) : maintenanceMode ? (
+                'Выключить режим'
+              ) : (
+                'Включить режим'
+              )}
+            </button>
+          </div>
+          
+          {maintenanceMode && (
+            <div className="mt-3">
+              <label className="block text-sm text-gray-400 mb-2">Сообщение для пользователей</label>
+              <textarea
+                value={maintenanceMessage}
+                onChange={(e) => setMaintenanceMessage(e.target.value)}
+                placeholder="Сообщение о технических работах..."
+                className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:border-[#2b6bff] text-white text-sm"
+                rows={2}
+              />
+              <p className="text-xs text-gray-500 mt-1">Пользователи увидят это сообщение при попытке зайти на сайт</p>
+            </div>
+          )}
         </div>
         
         {/* Статистика */}
