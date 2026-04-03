@@ -21,7 +21,6 @@ export class WebCryptoService implements ICryptoService {
     _recipientPublicKey: Uint8Array,
     _senderPrivateKey: Uint8Array
   ): Promise<EncryptedMessage> {
-    // Шифрование через AES-GCM
     const encoder = new TextEncoder()
     const data = encoder.encode(message)
     const key = await window.crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt'])
@@ -39,7 +38,6 @@ export class WebCryptoService implements ICryptoService {
     _recipientPrivateKey: Uint8Array,
     _senderPublicKey: Uint8Array
   ): Promise<string> {
-    // Временно возвращаем расшифрованный base64
     try {
       return decodeURIComponent(escape(atob(encrypted.ciphertext)))
     } catch {
@@ -49,7 +47,9 @@ export class WebCryptoService implements ICryptoService {
 
   async getKeyFingerprint(publicKey: Uint8Array): Promise<string> {
     if (typeof window === 'undefined') return ''
-    const hash = await window.crypto.subtle.digest('SHA-256', publicKey.buffer.slice(publicKey.byteOffset, publicKey.byteOffset + publicKey.byteLength))
+    // Копируем в новый ArrayBuffer чтобы избежать SharedArrayBuffer
+    const buffer = new Uint8Array(publicKey).buffer
+    const hash = await window.crypto.subtle.digest('SHA-256', buffer)
     return Array.from(new Uint8Array(hash).slice(0, 8))
       .map(b => b.toString(16).padStart(2, '0'))
       .join(':')
