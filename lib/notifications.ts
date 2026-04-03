@@ -1,83 +1,51 @@
-// Функция для запроса разрешения на уведомления
-export async function requestNotificationPermission() {
-  if (typeof window === 'undefined') return false
-  
-  if (!('Notification' in window)) {
-    console.log('Браузер не поддерживает уведомления')
-    return false
-  }
-
+export async function requestNotificationPermission(): Promise<boolean> {
+  if (typeof window === 'undefined' || !('Notification' in window)) return false
   const permission = await Notification.requestPermission()
   return permission === 'granted'
 }
 
-// Функция для показа уведомления
 export function showNotification(title: string, body: string, icon?: string, onClick?: () => void) {
   if (typeof window === 'undefined') return
-  
-  if (!('Notification' in window) || Notification.permission !== 'granted') {
-    return
-  }
+  if (!('Notification' in window) || Notification.permission !== 'granted') return
 
-  const options: NotificationOptions = {
-    body: body,
+  const notification = new Notification(title, {
+    body,
     icon: icon || 'https://i.ibb.co/dsywjJ5Y/W.png',
     badge: 'https://i.ibb.co/dsywjJ5Y/W.png',
     silent: false,
-  }
-  
-  // vibrate доступен только в некоторых браузерах
-  if ('vibrate' in navigator) {
-    // @ts-ignore - vibrate существует в некоторых окружениях
-    options.vibrate = [200, 100, 200]
-  }
-
-  const notification = new Notification(title, options)
+  })
 
   if (onClick) {
-    notification.onclick = () => {
-      onClick()
-      notification.close()
-    }
+    notification.onclick = () => { onClick(); notification.close() }
   }
 
   setTimeout(() => notification.close(), 5000)
 }
 
-// Функция для регистрации Service Worker
-export async function registerServiceWorker() {
+export async function registerServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   if (typeof window === 'undefined') return null
-  
-  if ('serviceWorker' in navigator && 'PushManager' in window) {
-    try {
-      const registration = await navigator.serviceWorker.register('/sw.js')
-      console.log('Service Worker registered')
-      return registration
-    } catch (error) {
-      console.error('Service Worker registration failed:', error)
-    }
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return null
+
+  try {
+    return await navigator.serviceWorker.register('/sw.js', { scope: '/' })
+  } catch (error) {
+    console.error('Service Worker registration failed:', error)
+    return null
   }
-  return null
 }
 
-// Функция для подписки на Push-уведомления
-export async function subscribeToPushNotifications(userId: string) {
+export async function subscribeToPushNotifications(userId: string): Promise<PushSubscription | null> {
   if (typeof window === 'undefined') return null
 
   try {
     const registration = await registerServiceWorker()
     if (!registration) return null
 
-    const permission = await requestNotificationPermission()
-    if (!permission) return null
+    const granted = await requestNotificationPermission()
+    if (!granted) return null
 
-    const existingSubscription = await registration.pushManager.getSubscription()
-    if (existingSubscription) {
-      await saveSubscription(userId, existingSubscription)
-      return existingSubscription
-    }
-
-    const subscription = await registration.pushManager.subscribe({
+    const existing = await registration.pushManager.getSubscription()
+    const subscription = existing ?? await registration.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
     })
@@ -90,7 +58,7 @@ export async function subscribeToPushNotifications(userId: string) {
   }
 }
 
-async function saveSubscription(userId: string, subscription: PushSubscription) {
+async function saveSubscription(userId: string, subscription: PushSubscription): Promise<void> {
   try {
     await fetch('/api/auth/notifications/subscribe', {
       method: 'POST',

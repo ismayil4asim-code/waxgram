@@ -1,55 +1,57 @@
 import { KeyPair, EncryptedMessage, ICryptoService } from './types'
 
 export class WebCryptoService implements ICryptoService {
-  private crypto: Crypto
-  
-  constructor() {
-    this.crypto = window.crypto
-  }
-  
   async generateKeyPair(): Promise<KeyPair> {
-    // Временное решение - возвращаем фейковые ключи
-    const fakeKey = new Uint8Array(32)
-    for (let i = 0; i < 32; i++) {
-      fakeKey[i] = Math.floor(Math.random() * 256)
-    }
-    
+    if (typeof window === 'undefined') throw new Error('WebCrypto not available')
+    const keyPair = await window.crypto.subtle.generateKey(
+      { name: 'ECDH', namedCurve: 'P-256' },
+      true,
+      ['deriveKey']
+    )
+    const publicKeyBuffer = await window.crypto.subtle.exportKey('raw', keyPair.publicKey)
+    const privateKeyBuffer = await window.crypto.subtle.exportKey('pkcs8', keyPair.privateKey)
     return {
-      publicKey: fakeKey,
-      privateKey: fakeKey
+      publicKey: new Uint8Array(publicKeyBuffer),
+      privateKey: new Uint8Array(privateKeyBuffer),
     }
   }
-  
+
   async encryptForRecipient(
     message: string,
-    recipientPublicKey: Uint8Array,
-    senderPrivateKey: Uint8Array
+    _recipientPublicKey: Uint8Array,
+    _senderPrivateKey: Uint8Array
   ): Promise<EncryptedMessage> {
-    // Временное решение - возвращаем исходное сообщение
+    // Шифрование через AES-GCM
+    const encoder = new TextEncoder()
+    const data = encoder.encode(message)
+    const key = await window.crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt'])
+    const nonce = window.crypto.getRandomValues(new Uint8Array(12))
+    const encrypted = await window.crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce }, key, data)
     return {
-      ciphertext: btoa(unescape(encodeURIComponent(message))),
-      nonce: 'dummy_nonce',
-      senderPublicKey: btoa(unescape(encodeURIComponent('dummy_key')))
+      ciphertext: btoa(String.fromCharCode(...new Uint8Array(encrypted))),
+      nonce: btoa(String.fromCharCode(...nonce)),
+      senderPublicKey: 'placeholder',
     }
   }
-  
+
   async decryptMessage(
     encrypted: EncryptedMessage,
-    recipientPrivateKey: Uint8Array,
-    senderPublicKey: Uint8Array
+    _recipientPrivateKey: Uint8Array,
+    _senderPublicKey: Uint8Array
   ): Promise<string> {
-    // Временное решение - возвращаем декодированное сообщение
+    // Временно возвращаем расшифрованный base64
     try {
       return decodeURIComponent(escape(atob(encrypted.ciphertext)))
     } catch {
       return encrypted.ciphertext
     }
   }
-  
+
   async getKeyFingerprint(publicKey: Uint8Array): Promise<string> {
-    // Временное решение
-    return Array.from(publicKey.slice(0, 8))
+    if (typeof window === 'undefined') return ''
+    const hash = await window.crypto.subtle.digest('SHA-256', publicKey)
+    return Array.from(new Uint8Array(hash).slice(0, 8))
       .map(b => b.toString(16).padStart(2, '0'))
-      .join('')
+      .join(':')
   }
 }

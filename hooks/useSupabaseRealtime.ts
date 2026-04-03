@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { showNotification } from '@/lib/notifications'
 
@@ -17,147 +17,84 @@ interface Message {
 }
 
 export function useSupabaseRealtime(roomId: string | null, userId: string | null) {
-  const [messages, setMessages] = useState<any[]>([])
-  const [typingUsers, setTypingUsers] = useState<string[]>([])
-  const [onlineUsers, setOnlineUsers] = useState<any[]>([])
+  const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(true)
+  // Кэшируем профили отправителей, чтобы не дёргать БД при каждом сообщении
+  const senderCache = useRef<Record<string, { username?: string; avatar_url?: string }>>({})
 
-  // Загрузка сообщений
-  useEffect(() => {
+  const loadMessages = useCallback(async () => {
     if (!roomId) return
+    const { data, error } = await supabase
+      .from('messages')
+      .select('*, profiles(username, avatar_url)')
+      .eq('room_id', roomId)
+      .order('created_at', { ascending: true })
+      .limit(100)
 
-    const loadMessages = async () => {
-      const { data, error } = await supabase
-        .from('messages')
-        .select(`
-          *,
-          profiles (
-            username,
-            avatar_url
-          )
-        `)
-        .eq('room_id', roomId)
-        .order('created_at', { ascending: true })
-        .limit(100)
-
-      if (!error && data) {
-        const formattedMessages = data.map((msg: any) => ({
-          ...msg,
-          username: msg.profiles?.username,
-          avatar_url: msg.profiles?.avatar_url
-        }))
-        setMessages(formattedMessages)
-      }
-      setLoading(false)
+    if (!error && data) {
+      const formatted = data.map((msg: any) => ({
+        ...msg,
+        username: msg.profiles?.username,
+        avatar_url: msg.profiles?.avatar_url,
+      }))
+      setMessages(formatted)
     }
-
-    loadMessages()
+    setLoading(false)
   }, [roomId])
 
-  // Подписка на новые сообщения
+  useEffect(() => {
+    if (!roomId) return
+    loadMessages()
+  }, [roomId, loadMessages])
+
   useEffect(() => {
     if (!roomId) return
 
-    const messageChannel = supabase
-      .channel(`room:${roomId}`)
+    const channel = supabase
+      .channel(`realtime:room:${roomId}`)
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
         table: 'messages',
         filter: `room_id=eq.${roomId}`,
       }, async (payload) => {
-        const newMessage = payload.new as any
-        
-        // Получаем данные отправителя
-        const { data: sender } = await supabase
-          .from('profiles')
-          .select('username, avatar_url')
-          .eq('id', newMessage.sender_id)
-          .single()
-        
-        const messageWithSender = {
-          ...newMessage,
-          username: sender?.username,
-          avatar_url: sender?.avatar_url
+        const msg = payload.new as any
+
+        // Используем кэш профилей
+        let sender = senderCache.current[msg.sender_id]
+        if (!sender) {
+          const { data } = await supabase
+            .from('profiles')
+            .select('username, avatar_url')
+            .eq('id', msg.sender_id)
+            .single()
+          sender = data || {}
+          senderCache.current[msg.sender_id] = sender
         }
-        
-        setMessages((prev: any[]) => [...prev, messageWithSender])
-        
-        // Отправляем уведомление
-        if (newMessage.sender_id !== userId && newMessage.content) {
-          showNotification(
-            sender?.username || 'Пользователь',
-            newMessage.content,
-            sender?.avatar_url,
-            () => {
-              window.focus()
-            }
-          )
+
+        const msgWithSender = { ...msg, username: sender.username, avatar_url: sender.avatar_url }
+        setMessages(prev => [...prev, msgWithSender])
+
+        if (msg.sender_id !== userId && msg.content) {
+          showNotification(sender.username || 'Пользователь', msg.content, sender.avatar_url, () => window.focus())
         }
       })
       .subscribe()
 
-    return () => {
-      messageChannel.unsubscribe()
-    }
+    return () => { channel.unsubscribe() }
   }, [roomId, userId])
 
-  // Загрузка онлайн пользователей
-  useEffect(() => {
-    const loadOnlineUsers = async () => {
-      const { data } = await supabase
-        .from('profiles')
-        .select('id, username, avatar_url, online')
-        .eq('online', true)
-        .limit(50)
-      
-      if (data) {
-        setOnlineUsers(data)
-      }
-    }
-
-    loadOnlineUsers()
-
-    const onlineChannel = supabase
-      .channel('online-users')
-      .on('postgres_changes', {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'profiles',
-        filter: 'online=eq.true',
-      }, (payload) => {
-        const updated = payload.new
-        setOnlineUsers((prev: any[]) => {
-          const exists = prev.find(u => u.id === updated.id)
-          if (exists) {
-            return prev.map(u => u.id === updated.id ? updated : u)
-          }
-          return [...prev, updated]
-        })
-      })
-      .subscribe()
-
-    return () => {
-      onlineChannel.unsubscribe()
-    }
-  }, [])
-
-  // Отправка сообщения
-  const sendMessage = async (content: string, type: string = 'text', file?: File) => {
-    if (!roomId || !userId || (!content && !file)) return
+  const sendMessage = useCallback(async (content: string, type = 'text', file?: File) => {
+    if (!roomId || !userId || (!content && !file)) return false
 
     let fileUrl: string | null = null
-
     if (file) {
       const fileName = `${Date.now()}_${file.name}`
       const { data, error } = await supabase.storage
         .from('chat-files')
         .upload(`${roomId}/${fileName}`, file)
-
       if (!error && data) {
-        const { data: { publicUrl } } = supabase.storage
-          .from('chat-files')
-          .getPublicUrl(data.path)
+        const { data: { publicUrl } } = supabase.storage.from('chat-files').getPublicUrl(data.path)
         fileUrl = publicUrl
       }
     }
@@ -170,18 +107,8 @@ export function useSupabaseRealtime(roomId: string | null, userId: string | null
       file_url: fileUrl,
     })
 
-    if (error) {
-      console.error('Send error:', error)
-      return false
-    }
-    return true
-  }
+    return !error
+  }, [roomId, userId])
 
-  return {
-    messages,
-    typingUsers,
-    onlineUsers,
-    loading,
-    sendMessage,
-  }
+  return { messages, loading, sendMessage }
 }
