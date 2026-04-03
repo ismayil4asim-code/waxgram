@@ -13,9 +13,6 @@ const nextConfig = {
     removeConsole: process.env.NODE_ENV === 'production',
   },
   poweredByHeader: false,
-  experimental: {
-    optimizeCss: true,
-  },
 }
 
 module.exports = nextConfig
